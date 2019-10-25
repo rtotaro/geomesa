@@ -26,6 +26,7 @@ import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.index.{ByteArrays, IndexMode}
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import org.opengis.filter.Filter
+import org.locationtech.geomesa.index.conf.QueryHints.RichHints
 
 import scala.util.control.NonFatal
 
@@ -36,7 +37,7 @@ import scala.util.control.NonFatal
   *
   * @param delegate delegate filter
   */
-class CqlTransformFilter(delegate: DelegateFilter,validSample: Boolean) extends FilterBase {
+class CqlTransformFilter(delegate: DelegateFilter,sampling: SimpleFeature => Boolean) extends FilterBase {
 
   /**
     * From the Filter javadocs:
@@ -55,7 +56,7 @@ class CqlTransformFilter(delegate: DelegateFilter,validSample: Boolean) extends 
     * </ul>
     */
 
-  override def filterKeyValue(v: Cell): ReturnCode = if(validSample) delegate.filterKeyValue(v) else ReturnCode.SKIP
+  override def filterKeyValue(v: Cell): ReturnCode = delegate.filterKeyValue(v,sampling)
   override def transformCell(v: Cell): Cell = delegate.transformCell(v)
   override def toByteArray: Array[Byte] = CqlTransformFilter.serialize(delegate)
   override def toString: String = delegate.toString
@@ -74,7 +75,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     */
   @throws(classOf[DeserializationException])
   def parseFrom(pbBytes: Array[Byte]): org.apache.hadoop.hbase.filter.Filter =
-    new CqlTransformFilter(deserialize(pbBytes),true)//TODO: check if is corrent to use a default: used in test only
+    new CqlTransformFilter(deserialize(pbBytes),_ => true)//TODO: check if is corrent to use a default: used in test only
 
   /**
     * Create a new filter. Typically, filters created by this method will just be serialized to bytes and sent
@@ -94,26 +95,24 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
       filter: Option[Filter],
       transform: Option[(String, SimpleFeatureType)],
       hints:Hints): CqlTransformFilter = {
-    if (filter.isEmpty && transform.isEmpty) {
+    if (filter.isEmpty && transform.isEmpty && hints.getSampling.isEmpty) {
       throw new IllegalArgumentException("The filter must have a predicate and/or transform")
     }
-
-    import org.locationtech.geomesa.index.conf.QueryHints.RichHints
-
 
     val feature = KryoFeatureSerializer(sft, SerializationOptions.withoutId).getReusableFeature
     feature.setIdParser(index.getIdFromRow(_, _, _, null))
     transform.foreach { case (tdefs, tsft) => feature.setTransforms(tdefs, tsft) }
 
     val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
-    val samplingFunction :SimpleFeature => Boolean = samplingOptions
+    val maybeSamplingFunction = samplingOptions
       .flatMap(it => sample(SamplingIterator.configure(sft, it)))
-      .getOrElse( _ => true)
+    val samplingFunction :SimpleFeature => Boolean = maybeSamplingFunction.getOrElse( _ => true)
 
     val delegate = filter match {
-      case None => new CqlTransformFilter(new TransformDelegate(sft, index, feature),samplingFunction(feature))
-      case Some(f) if transform.isEmpty => new CqlTransformFilter(new FilterDelegate(sft, index, feature, f),samplingFunction(feature))
-      case Some(f) => new CqlTransformFilter(new FilterTransformDelegate(sft, index, feature, f),samplingFunction(feature))
+      case None if maybeSamplingFunction.isDefined => new CqlTransformFilter(new FilterDelegate(sft, index, feature, Filter.INCLUDE),samplingFunction)
+      case None => new CqlTransformFilter(new TransformDelegate(sft, index, feature),samplingFunction)
+      case Some(f) if transform.isEmpty => new CqlTransformFilter(new FilterDelegate(sft, index, feature, f),samplingFunction)
+      case Some(f) => new CqlTransformFilter(new FilterTransformDelegate(sft, index, feature, f),samplingFunction)
     }
 
     delegate
@@ -309,7 +308,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     def index: GeoMesaFeatureIndex[_, _]
     def filter: Option[Filter]
     def transform: Option[(String, SimpleFeatureType)]
-    def filterKeyValue(v: Cell): ReturnCode
+    def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode
     def transformCell(v: Cell): Cell
   }
 
@@ -330,11 +329,11 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     override def filter: Option[Filter] = Some(filt)
     override def transform: Option[(String, SimpleFeatureType)] = None
 
-    override def filterKeyValue(v: Cell): ReturnCode = {
+    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
-        if (filt.evaluate(feature)) { ReturnCode.INCLUDE } else { ReturnCode.SKIP }
+        if (filt.evaluate(feature) && sampling(feature)) { ReturnCode.INCLUDE } else { ReturnCode.SKIP }
       } catch {
         case NonFatal(e) =>
           logger.error("Error evaluating filter, skipping:", e)
@@ -362,11 +361,11 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     override def filter: Option[Filter] = None
     override def transform: Option[(String, SimpleFeatureType)] = feature.getTransform
 
-    override def filterKeyValue(v: Cell): ReturnCode = {
+    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
-        ReturnCode.INCLUDE
+        if(sampling(feature))ReturnCode.INCLUDE else ReturnCode.SKIP
       } catch {
         case NonFatal(e) =>
           logger.error("Error setting feature buffer, skipping:", e)
@@ -401,11 +400,11 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     override def filter: Option[Filter] = Some(filt)
     override def transform: Option[(String, SimpleFeatureType)] = feature.getTransform
 
-    override def filterKeyValue(v: Cell): ReturnCode = {
+    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
-        if (filt.evaluate(feature)) { ReturnCode.INCLUDE } else { ReturnCode.SKIP }
+        if (filt.evaluate(feature)&& sampling(feature)) { ReturnCode.INCLUDE } else { ReturnCode.SKIP }
       } catch {
         case NonFatal(e) =>
           logger.error("Error evaluating filter, skipping:", e)
