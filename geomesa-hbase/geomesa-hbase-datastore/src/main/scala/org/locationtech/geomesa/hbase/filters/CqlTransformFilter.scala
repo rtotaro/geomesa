@@ -15,11 +15,12 @@ import org.apache.hadoop.hbase.filter.Filter.ReturnCode
 import org.apache.hadoop.hbase.filter.FilterBase
 import org.apache.hadoop.hbase.{Cell, KeyValue}
 import org.geotools.filter.text.ecql.ECQL
+import org.geotools.util.factory.Hints
 import org.locationtech.geomesa.features.SerializationOption.SerializationOptions
 import org.locationtech.geomesa.features.kryo.{KryoBufferSimpleFeature, KryoFeatureSerializer}
 import org.locationtech.geomesa.hbase.filters.CqlTransformFilter.DelegateFilter
 import org.locationtech.geomesa.index.api.{FilterStrategy, GeoMesaFeatureIndex, IndexKeySpace}
-import org.locationtech.geomesa.index.iterators.IteratorCache
+import org.locationtech.geomesa.index.iterators.{IteratorCache, SamplingIterator}
 import org.locationtech.geomesa.index.stats.GeoMesaStats
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.index.{ByteArrays, IndexMode}
@@ -35,7 +36,7 @@ import scala.util.control.NonFatal
   *
   * @param delegate delegate filter
   */
-class CqlTransformFilter(delegate: DelegateFilter) extends FilterBase {
+class CqlTransformFilter(delegate: DelegateFilter,validSample: Boolean) extends FilterBase {
 
   /**
     * From the Filter javadocs:
@@ -54,13 +55,13 @@ class CqlTransformFilter(delegate: DelegateFilter) extends FilterBase {
     * </ul>
     */
 
-  override def filterKeyValue(v: Cell): ReturnCode = delegate.filterKeyValue(v)
+  override def filterKeyValue(v: Cell): ReturnCode = if(validSample) delegate.filterKeyValue(v) else ReturnCode.SKIP
   override def transformCell(v: Cell): Cell = delegate.transformCell(v)
   override def toByteArray: Array[Byte] = CqlTransformFilter.serialize(delegate)
   override def toString: String = delegate.toString
 }
 
-object CqlTransformFilter extends StrictLogging {
+object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
   val Priority: Int = 30
 
@@ -73,7 +74,7 @@ object CqlTransformFilter extends StrictLogging {
     */
   @throws(classOf[DeserializationException])
   def parseFrom(pbBytes: Array[Byte]): org.apache.hadoop.hbase.filter.Filter =
-    new CqlTransformFilter(deserialize(pbBytes))
+    new CqlTransformFilter(deserialize(pbBytes),true)//TODO: check if is corrent to use a default: used in test only
 
   /**
     * Create a new filter. Typically, filters created by this method will just be serialized to bytes and sent
@@ -91,22 +92,31 @@ object CqlTransformFilter extends StrictLogging {
       sft: SimpleFeatureType,
       index: GeoMesaFeatureIndex[_, _],
       filter: Option[Filter],
-      transform: Option[(String, SimpleFeatureType)]): CqlTransformFilter = {
+      transform: Option[(String, SimpleFeatureType)],
+      hints:Hints): CqlTransformFilter = {
     if (filter.isEmpty && transform.isEmpty) {
       throw new IllegalArgumentException("The filter must have a predicate and/or transform")
     }
+
+    import org.locationtech.geomesa.index.conf.QueryHints.RichHints
+
 
     val feature = KryoFeatureSerializer(sft, SerializationOptions.withoutId).getReusableFeature
     feature.setIdParser(index.getIdFromRow(_, _, _, null))
     transform.foreach { case (tdefs, tsft) => feature.setTransforms(tdefs, tsft) }
 
+    val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
+    val samplingFunction :SimpleFeature => Boolean = samplingOptions
+      .flatMap(it => sample(SamplingIterator.configure(sft, it)))
+      .getOrElse( _ => true)
+
     val delegate = filter match {
-      case None => new TransformDelegate(sft, index, feature)
-      case Some(f) if transform.isEmpty => new FilterDelegate(sft, index, feature, f)
-      case Some(f) => new FilterTransformDelegate(sft, index, feature, f)
+      case None => new CqlTransformFilter(new TransformDelegate(sft, index, feature),samplingFunction(feature))
+      case Some(f) if transform.isEmpty => new CqlTransformFilter(new FilterDelegate(sft, index, feature, f),samplingFunction(feature))
+      case Some(f) => new CqlTransformFilter(new FilterTransformDelegate(sft, index, feature, f),samplingFunction(feature))
     }
 
-    new CqlTransformFilter(delegate)
+    delegate
   }
 
   /**
