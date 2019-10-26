@@ -12,14 +12,17 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.hadoop.hbase.filter.Filter.ReturnCode
 import org.apache.hadoop.hbase.{Cell, KeyValue}
 import org.geotools.data._
+import org.geotools.filter.text.ecql.ECQL
+import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.features.kryo.KryoFeatureSerializer
 import org.locationtech.geomesa.index.api.{SingleRowKeyValue, WritableFeature}
 import org.locationtech.geomesa.index.conf.ColumnGroups
 import org.locationtech.geomesa.index.index.z2.Z2Index
-import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
+import org.locationtech.geomesa.utils.geotools.{FeatureUtils, SimpleFeatureTypes}
 import org.locationtech.geomesa.utils.index.IndexMode
+import org.locationtech.geomesa.utils.io.WithClose
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 
@@ -43,6 +46,21 @@ class CqlTransformFilterTest extends Specification with LazyLogging {
 
   "CqlTransformFilter" should {
     "deserialize filters without an index" in {
+
+      val featureType = SimpleFeatureTypes.createType("cqlFilter", "name:String,geom:Point:srid=4326")
+      val ecqlFilter = ECQL.toFilter("BBOX(geom, -55.0,45.0,-45.0,55.0)")
+
+      val transformFeatureType = SimpleFeatureTypes.createType("cqlFilter", "name:String")
+      val tranform = Option.apply(("name=name",transformFeatureType))
+
+      //  CqlFilter[BBOX(geom, -55.0,45.0,-45.0,55.0)]
+      val bytesFilter = CqlTransformFilter(featureType,null,Option.apply(ecqlFilter),Option.empty,new Hints()).serializingForTest()
+      //  TransformFilter[name=name]
+      val bytesTrasformer = CqlTransformFilter(featureType,null,Option.empty,tranform,new Hints()).serializingForTest()
+      //  CqlTransformFilter[BBOX(geom, -55.0,45.0,-45.0,55.0), name=name]
+      val bytesTransformFilter = CqlTransformFilter(featureType,null,Option.apply(ecqlFilter),tranform,new Hints()).serializingForTest()
+
+
       val tsft = SimpleFeatureTypes.createType("", "name:String")
       val serializer = KryoFeatureSerializer.builder(tsft).withoutId.build()
       val wrapper = WritableFeature.wrapper(sft, new ColumnGroups())

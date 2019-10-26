@@ -19,7 +19,7 @@ import org.geotools.filter.text.ecql.ECQL
 import org.geotools.util.factory.Hints
 import org.locationtech.geomesa.features.SerializationOption.SerializationOptions
 import org.locationtech.geomesa.features.kryo.{KryoBufferSimpleFeature, KryoFeatureSerializer}
-import org.locationtech.geomesa.hbase.filters.CqlTransformFilter.DelegateFilter
+import org.locationtech.geomesa.hbase.filters.CqlTransformFilter.{DelegateFilter, serialize}
 import org.locationtech.geomesa.index.api.{FilterStrategy, GeoMesaFeatureIndex, IndexKeySpace}
 import org.locationtech.geomesa.index.iterators.{IteratorCache, SamplingIterator}
 import org.locationtech.geomesa.index.stats.GeoMesaStats
@@ -61,6 +61,8 @@ class CqlTransformFilter(delegate: DelegateFilter) extends FilterBase {
   override def transformCell(v: Cell): Cell = delegate.transformCell(v)
   override def toByteArray: Array[Byte] = CqlTransformFilter.serialize(delegate)
   override def toString: String = delegate.toString
+
+  def serializingForTest() = serialize(delegate)
 }
 
 object CqlTransformFilter extends StrictLogging with SamplingIterator {
@@ -77,6 +79,9 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
   @throws(classOf[DeserializationException])
   def parseFrom(pbBytes: Array[Byte]): org.apache.hadoop.hbase.filter.Filter =
     new CqlTransformFilter(deserialize(pbBytes))
+
+
+
 
   /**
     * Create a new filter. Typically, filters created by this method will just be serialized to bytes and sent
@@ -106,6 +111,9 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
     val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
 
+
+
+
     val delegate = filter match {
       case None if samplingOptions.isDefined && transform.isEmpty => new FilterDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
       case None if samplingOptions.isDefined => new FilterTransformDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
@@ -116,6 +124,9 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
     new CqlTransformFilter(delegate)
   }
+
+
+
 
   /**
     * Full serialization of the delegate filter
