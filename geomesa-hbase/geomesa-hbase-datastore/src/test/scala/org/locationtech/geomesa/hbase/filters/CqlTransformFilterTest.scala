@@ -17,6 +17,7 @@ import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.features.kryo.KryoFeatureSerializer
+import org.locationtech.geomesa.hbase.filters.CqlTransformFilter.NullFeatureIndex
 import org.locationtech.geomesa.index.api.{SingleRowKeyValue, WritableFeature}
 import org.locationtech.geomesa.index.conf.ColumnGroups
 import org.locationtech.geomesa.index.index.z2.Z2Index
@@ -39,13 +40,13 @@ class CqlTransformFilterTest extends Specification with LazyLogging {
   //  CqlTransformFilter[BBOX(geom, -55.0,45.0,-45.0,55.0), name=name]
 
   val serialized = Seq(
-    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAACFCQk9YKGdlb20sIC01NS4wLDQ1LjAsLTQ1LjAsNTUuMCn/////",
-    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAAAAAAAAJbmFtZT1uYW1lAAAAC25hbWU6U3RyaW5n",
-    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAACFCQk9YKGdlb20sIC01NS4wLDQ1LjAsLTQ1LjAsNTUuMCkAAAAJbmFtZT1uYW1lAAAAC25hbWU6U3RyaW5n"
+    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAACFCQk9YKGdlb20sIC01NS4w\nLDQ1LjAsLTQ1LjAsNTUuMCn/////AAAAAzowOv////8AAAAAAAAAAA==",
+    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAAAAAAAAJbmFtZT1uYW1lAAAA\nC25hbWU6U3RyaW5nAAAAAzowOv////8AAAAAAAAAAA==",
+    "AAAAIW5hbWU6U3RyaW5nLCpnZW9tOlBvaW50OnNyaWQ9NDMyNgAAACFCQk9YKGdlb20sIC01NS4w\nLDQ1LjAsLTQ1LjAsNTUuMCkAAAAJbmFtZT1uYW1lAAAAC25hbWU6U3RyaW5nAAAAAzowOv////8A\nAAAAAAAAAA=="
   )
 
   "CqlTransformFilter" should {
-    "deserialize filters without an index" in {
+    "serialize / deserialize filters without an index" in {
 
       val featureType = SimpleFeatureTypes.createType("cqlFilter", "name:String,geom:Point:srid=4326")
       val ecqlFilter = ECQL.toFilter("BBOX(geom, -55.0,45.0,-45.0,55.0)")
@@ -53,12 +54,7 @@ class CqlTransformFilterTest extends Specification with LazyLogging {
       val transformFeatureType = SimpleFeatureTypes.createType("cqlFilter", "name:String")
       val tranform = Option.apply(("name=name",transformFeatureType))
 
-      //  CqlFilter[BBOX(geom, -55.0,45.0,-45.0,55.0)]
-      val bytesFilter = CqlTransformFilter(featureType,null,Option.apply(ecqlFilter),Option.empty,new Hints()).serializingForTest()
-      //  TransformFilter[name=name]
-      val bytesTrasformer = CqlTransformFilter(featureType,null,Option.empty,tranform,new Hints()).serializingForTest()
-      //  CqlTransformFilter[BBOX(geom, -55.0,45.0,-45.0,55.0), name=name]
-      val bytesTransformFilter = CqlTransformFilter(featureType,null,Option.apply(ecqlFilter),tranform,new Hints()).serializingForTest()
+
 
 
       val tsft = SimpleFeatureTypes.createType("", "name:String")
@@ -73,9 +69,36 @@ class CqlTransformFilterTest extends Specification with LazyLogging {
       val kvs = features.map(f => converter.convert(wrapper.wrap(f)).asInstanceOf[SingleRowKeyValue[Long]])
       val cells = kvs.map(kv => new KeyValue(kv.row, Array.empty[Byte], Array.empty[Byte], kv.values.head.value))
 
-      val filter = CqlTransformFilter.parseFrom(Base64.decode(serialized.head))
-      val transform = CqlTransformFilter.parseFrom(Base64.decode(serialized(1)))
-      val filterTransform = CqlTransformFilter.parseFrom(Base64.decode(serialized(2)))
+
+      /**
+        * //code used for generatating base64 serialized filters. For using it temporary de-comment serializingForTest() and make NullFeatureIndex object public
+        *
+        *
+        * //  CqlFilter[BBOX(geom, -55.0,45.0,-45.0,55.0)]
+        * val bytesFilter = CqlTransformFilter(featureType, NullFeatureIndex, Option.apply(ecqlFilter),Option.empty,new Hints()).serializingForTest()
+        * val base64Filter = Base64.encodeBytes(bytesFilter)
+        * println(base64Filter)
+        *
+        * //  TransformFilter[name=name]
+        * val bytesTrasformer = CqlTransformFilter(featureType,NullFeatureIndex,Option.empty,tranform,new Hints()).serializingForTest()
+        * val base64Transformer = Base64.encodeBytes(bytesTrasformer)
+        * println(base64Transformer)
+        *
+        * //  CqlTransformFilter[BBOX(geom, -55.0,45.0,-45.0,55.0), name=name]
+        * val bytesTransformFilter = CqlTransformFilter(featureType,NullFeatureIndex,Option.apply(ecqlFilter),tranform,new Hints()).serializingForTest()
+        * val base64TransformerFilter = Base64.encodeBytes(bytesTransformFilter)
+        * println(base64TransformerFilter)
+        *
+        *
+        * */
+
+      val base64Filter = serialized(0)
+      val base64Transformer = serialized(1)
+      val base64TransformerFilter = serialized(2)
+
+      val filter = CqlTransformFilter.parseFrom(Base64.decode(base64Filter))
+      val transform = CqlTransformFilter.parseFrom(Base64.decode(base64Transformer))
+      val filterTransform = CqlTransformFilter.parseFrom(Base64.decode(base64TransformerFilter))
 
       def getAttributes(cell: Cell): Seq[AnyRef] =
         serializer.deserialize(cell.getValueArray, cell.getValueOffset, cell.getValueLength).getAttributes.asScala
