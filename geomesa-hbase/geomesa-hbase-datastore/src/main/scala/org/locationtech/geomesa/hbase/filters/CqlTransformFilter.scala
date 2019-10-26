@@ -107,7 +107,8 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
 
     val delegate = filter match {
-      case None if samplingOptions.isDefined => new FilterDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
+      case None if samplingOptions.isDefined && transform.isEmpty => new FilterDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
+      case None if samplingOptions.isDefined => new FilterTransformDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
       case None => new TransformDelegate(sft, index, feature,samplingOptions)
       case Some(f) if transform.isEmpty => new FilterDelegate(sft, index, feature, f,samplingOptions)
       case Some(f) => new FilterTransformDelegate(sft, index, feature, f,samplingOptions)

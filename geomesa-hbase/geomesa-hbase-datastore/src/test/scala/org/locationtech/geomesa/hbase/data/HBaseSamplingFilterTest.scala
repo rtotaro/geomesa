@@ -31,12 +31,12 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
   sequential
 
   step {
-    logger.info("Starting the HBase S2 Test")
+    logger.info("Starting the HBase Sampling Test")
   }
 
-  "Hbase with sampling" should {
-    "return at least factor * datasize sample" in {
-      val typeName = "testS2"
+  "Hbase" should {
+    "working with sampling" in {
+      val typeName = "testSampling"
 
       val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
       val ds = DataStoreFinder.getDataStore(params.asJava).asInstanceOf[HBaseDataStore]
@@ -64,186 +64,195 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
         def runQuery(query: Query): Seq[SimpleFeature] =
           SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList
 
-        { // return all features for inclusive filter
-          val filter = "bbox(geom, -180, -90, 180, 90)" +
-                        " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+        {
+          // 0
+
+          //sampling disabled
+
+          //this filter return all feature i need to test sampling return size 30 without sampling
+          val filter = "bbox(geom, -179, -89, 179, 89)"+
+            " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+
+          val query = new Query(sft.getTypeName, ECQL.toFilter(filter), Array("name","track"))
+
+          val features = runQuery(query)
+
+          features must haveSize(30)
+        }
+
+        {
+          // 1
+          //filter enabled
+          //trasformer disabled
+          //sample-by enabled
+
+          //this filter return all feature i need to test sampling return size 30 without sampling
+          val filter = "bbox(geom, -179, -89, 179, 89)"+
+            " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
 
           val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
           query.getHints.put(QueryHints.SAMPLING, 0.1f)
-//          query.getHints.put(QueryHints.SAMPLE_BY, "track1")
+          query.getHints.put(QueryHints.SAMPLE_BY, "track")
 
           val features = runQuery(query)
-          features must haveSize(4)
+
+          features must haveSize(12)
+
+          features(0).getAttribute("dtg") must not beNull
+
+          features.filter(p=>p.getAttribute("track").equals("track1")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track2")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track3")).size must greaterThan(1)
 
         }
 
-        "return at least factor * datasize sample using sampling field" in {
-          val typeName = "testS2"
 
-          val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
-          val ds = DataStoreFinder.getDataStore(params.asJava).asInstanceOf[HBaseDataStore]
-          ds must not(beNull)
+        {
+          // 2
+          //filter enabled
+          //trasformer enabled
+          //sample-by enabled
 
-          try {
-            ds.getSchema(typeName) must beNull
-            ds.createSchema(SimpleFeatureTypes.createType(typeName,
-              "name:String,track:String,dtg:Date,*geom:Point:srid=4326;geomesa.indices.enabled=s2:geom"))
-            val sft = ds.getSchema(typeName)
+          //this filter return all feature i need to test sampling
+          val filter = "bbox(geom, -179, -89, 179, 89)"+
+            " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
 
-            val features =
-              (0 until 10).map { i =>
-                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track1", s"2010-05-07T0$i:00:00.000Z", s"POINT(40 6$i)")
-              } ++ (10 until 20).map { i =>
-                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track2", s"2010-05-${i}T$i:00:00.000Z", s"POINT(40 6${i - 10})")
-              } ++ (20 until 30).map { i =>
-                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track3", s"2010-05-${i}T${i-10}:00:00.000Z", s"POINT(40 8${i - 20})")
-              }
+          val query = new Query(sft.getTypeName, ECQL.toFilter(filter), Array("name","track"))
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+          query.getHints.put(QueryHints.SAMPLE_BY, "track")
 
-            WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
-              features.foreach(f => FeatureUtils.write(writer, f, useProvidedFid = true))
-            }
+          val features = runQuery(query)
 
-            def runQuery(query: Query): Seq[SimpleFeature] =
-              SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList
+          features must haveSize(12)
 
-            { // return all features for inclusive filter
-              val filter = "bbox(geom, -180, -90, 180, 90)" +
-                " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+          features(0).getAttribute("dtg") must beNull
 
-              val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
-              query.getHints.put(QueryHints.SAMPLING, 0.1f)
+          features.filter(p=>p.getAttribute("track").equals("track1")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track2")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track3")).size must greaterThan(1)
 
-              val features = runQuery(query)
-              features must haveSize(4)
 
-            }
+        }
 
-//        { // return some features for exclusive geom filter
-//          val filter = "bbox(geom, 35, 55, 45, 65.001)" +
-//              " AND dtg between '2010-05-07T00:00:00.000Z' and '2010-05-08T00:00:00.000Z'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter)))
-//          features must haveSize(6)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(0 to 5)
-//        }
-//
-//        { // return some features for exclusive date filter
-//          val filter = "bbox(geom, 35, 55, 45, 75)" +
-//              " AND dtg between '2010-05-07T06:00:00.000Z' and '2010-05-08T00:00:00.000Z'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter)))
-//          features must haveSize(4)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(6 to 9)
-//        }
-//
-//        { // work with whole world filter
-//          val filter = "bbox(geom, -180, -90, 180, 90)" +
-//              " AND dtg between '2010-05-07T05:00:00.000Z' and '2010-05-07T08:00:00.000Z'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter)))
-//          features must haveSize(4)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(5 to 8)
-//        }
-//
-//        { // work with small bboxes
-//          val filter = "bbox(geom, 39.999, 60.999, 40.001, 61.001)"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter)))
-//          features must haveSize(2)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(Seq(1, 11))
-//        }
-//
-//        { // apply secondary filters
-//          val filter = "bbox(geom, 35, 55, 45, 75)" +
-//              " AND dtg between '2010-05-07T06:00:00.000Z' and '2010-05-08T00:00:00.000Z'" +
-//              " AND name = 'name8'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter)))
-//          features must haveSize(1)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(Seq(8))
-//        }
-//
-//        { // apply transforms
-//          val filter = "bbox(geom, 35, 55, 45, 75)" +
-//              " AND dtg between '2010-05-07T06:00:00.000Z' and '2010-05-08T00:00:00.000Z'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter), Array("name")))
-//          features must haveSize(4)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(6 to 9)
-//          forall(features)((f: SimpleFeature) => f.getAttributeCount mustEqual 1)
-//          forall(features)((f: SimpleFeature) => f.getAttribute("name") must not(beNull))
-//        }
-//
-//        { // apply functional transforms
-//          val filter = "bbox(geom, 35, 55, 45, 75)" +
-//              " AND dtg between '2010-05-07T06:00:00.000Z' and '2010-05-08T00:00:00.000Z'"
-//          val features = runQuery(new Query(sft.getTypeName, ECQL.toFilter(filter), Array("derived=strConcat('my', name)")))
-//          features must haveSize(4)
-//          features.map(_.getID.toInt) must containTheSameElementsAs(6 to 9)
-//          forall(features)((f: SimpleFeature) => f.getAttributeCount mustEqual 1)
-//          forall(features)((f: SimpleFeature) => f.getAttribute("derived").asInstanceOf[String] must beMatching("myname\\d"))
-//        }
-//
-//        { // optimize for bin format
-//          val filter = "bbox(geom, -180, -90, 180, 90)" +
-//              " AND dtg between '2010-05-07T00:00:00.000Z' and '2010-05-07T12:00:00.000Z'"
-//          val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
-//          query.getHints.put(BIN_TRACK, "name")
-//          query.getHints.put(BIN_BATCH_SIZE, 100)
-//
-//          val returnedFeatures = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT))
-//          // the same simple feature gets reused - so make sure you access in serial order
-//          val aggregates = returnedFeatures.map(f => f.getAttribute(BIN_ATTRIBUTE_INDEX).asInstanceOf[Array[Byte]]).toList
-//          aggregates.size must beLessThan(10) // ensure some aggregation was done
-//          val bin = aggregates.flatMap(a => a.grouped(16).map(BinaryOutputEncoder.decode))
-//          bin must haveSize(10)
-//          (0 until 10).map(i => s"name$i".hashCode) must contain(atLeast(bin.map(_.trackId).tail: _*))
-//          bin.map(_.dtg) must
-//              containAllOf((0 until 10).map(i => features(i).getAttribute("dtg").asInstanceOf[Date].getTime))
-//          bin.map(_.lat) must containAllOf((0 until 10).map(_ + 60.0f))
-//          forall(bin.map(_.lon))(_ mustEqual 40.0)
-//        }
-//
-//        { // optimize for bin format with sorting
-//          val filter = "bbox(geom, -180, -90, 180, 90)" +
-//              " AND dtg between '2010-05-07T00:00:00.000Z' and '2010-05-07T12:00:00.000Z'"
-//          val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
-//          query.getHints.put(BIN_TRACK, "name")
-//          query.getHints.put(BIN_BATCH_SIZE, 100)
-//          query.getHints.put(BIN_SORT, true)
-//
-//          val returnedFeatures = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT))
-//          // the same simple feature gets reused - so make sure you access in serial order
-//          val aggregates = returnedFeatures.map(f => f.getAttribute(BIN_ATTRIBUTE_INDEX).asInstanceOf[Array[Byte]]).toSeq
-//          aggregates.size must beLessThan(10) // ensure some aggregation was done
-//          forall(aggregates) { a =>
-//            val window = a.grouped(16).map(BinaryOutputEncoder.decode(_).dtg).sliding(2).filter(_.length > 1)
-//            forall(window.toSeq)(w => w.head must beLessThanOrEqualTo(w(1)))
-//          }
-//          val bin = aggregates.flatMap(a => a.grouped(16).map(BinaryOutputEncoder.decode))
-//          bin must haveSize(10)
-//          (0 until 10).map(i => s"name$i".hashCode) must contain(atLeast(bin.map(_.trackId).tail: _*))
-//          bin.map(_.dtg) must
-//              containAllOf((0 until 10).map(i => features(i).getAttribute("dtg").asInstanceOf[Date].getTime))
-//          bin.map(_.lat) must containAllOf((0 until 10).map(_ + 60.0f))
-//          forall(bin.map(_.lon))(_ mustEqual 40.0)
-//        }
-//
-//        { // optimize for bin format with label
-//          val filter = "bbox(geom, -180, -90, 180, 90)" +
-//              " AND dtg between '2010-05-07T00:00:00.000Z' and '2010-05-07T12:00:00.000Z'"
-//          val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
-//          query.getHints.put(BIN_TRACK, "name")
-//          query.getHints.put(BIN_LABEL, "name")
-//          query.getHints.put(BIN_BATCH_SIZE, 100)
-//
-//          val returnedFeatures = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT))
-//          // the same simple feature gets reused - so make sure you access in serial order
-//          val aggregates = returnedFeatures.map(f => f.getAttribute(BIN_ATTRIBUTE_INDEX).asInstanceOf[Array[Byte]]).toSeq
-//          aggregates.size must beLessThan(10) // ensure some aggregation was done
-//          val bin = aggregates.flatMap(a => a.grouped(24).map(BinaryOutputEncoder.decode))
-//          bin must haveSize(10)
-//          (0 until 10).map(i => s"name$i".hashCode) must contain(atLeast(bin.map(_.trackId).tail: _*))
-//          bin.map(_.dtg) must
-//              containAllOf((0 until 10).map(i => features(i).getAttribute("dtg").asInstanceOf[Date].getTime))
-//          bin.map(_.lat) must containAllOf((0 until 10).map(_ + 60.0f))
-//          forall(bin.map(_.lon))(_ mustEqual 40.0)
-//          bin.map(_.label) must containAllOf((0 until 10).map(i => BinaryOutputEncoder.convertToLabel(s"name$i")))
-//        }
+        {
+          // 3
+          //filter disabled
+          //trasformer enabled
+          //sample-by enabled
+
+          val query = new Query(sft.getTypeName)
+          query.setPropertyNames(Array("name","track"))
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+          query.getHints.put(QueryHints.SAMPLE_BY, "track")
+
+          val features = runQuery(query)
+
+          features must haveSize(12)
+
+          features(0).getAttribute("dtg") must beNull
+
+          features.filter(p=>p.getAttribute("track").equals("track1")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track2")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track3")).size must greaterThan(1)
+
+        }
+
+        {
+          // 4
+          //filter disabled
+          //trasformer disabled
+          //sample-by enabled
+
+
+          val query = new Query(sft.getTypeName)
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+          query.getHints.put(QueryHints.SAMPLE_BY, "track")
+
+          val features = runQuery(query)
+
+          features must haveSize(12)
+
+          features(0).getAttribute("dtg") must not beNull
+
+          features.filter(p=>p.getAttribute("track").equals("track1")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track2")).size must greaterThan(1)
+          features.filter(p=>p.getAttribute("track").equals("track3")).size must greaterThan(1)
+
+        }
+
+        {
+          // 5
+          //filter enabled
+          //trasformer disabled
+          //sample-by disabled
+
+          //this filter return all feature i need to test sampling
+          val filter = "bbox(geom, -179, -89, 179, 89)"+
+            " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+
+          val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+
+          val features = runQuery(query)
+
+          features must haveSize(4)
+
+          features(0).getAttribute("dtg") must not beNull
+
+        }
+
+        {
+          // 6
+          //filter enabled
+          //trasformer enabled
+          //sample-by disabled
+
+
+          //this filter return all feature i need to test sampling
+          val filter = "bbox(geom, -179, -89, 179, 89)"+
+            " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+
+          val query = new Query(sft.getTypeName, ECQL.toFilter(filter), Array("name","track"))
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+
+          val features = runQuery(query)
+
+          features must haveSize(4)
+
+          features(0).getAttribute("dtg") must beNull
+        }
+        {
+          // 7
+          //filter disabled
+          //trasformer enabled
+          //sample-by disabled
+
+          val query = new Query(sft.getTypeName)
+          query.setPropertyNames(Array("name","track"))
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+
+          val features = runQuery(query)
+
+          features must haveSize(4)
+
+          features(0).getAttribute("dtg") must beNull
+
+        }
+        {
+          // 8
+          //filter disabled
+          //trasformer disabled
+          //sample-by disabled
+
+          val query = new Query(sft.getTypeName)
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
+
+          val features = runQuery(query)
+
+          features must haveSize(4)
+          features(0).getAttribute("dtg") must not beNull
+        }
+
       } finally {
         ds.dispose()
       }
