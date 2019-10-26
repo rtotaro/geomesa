@@ -7,6 +7,7 @@
  ***********************************************************************/
 
 package org.locationtech.geomesa.hbase.filters
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 
 import com.typesafe.scalalogging.StrictLogging
@@ -37,7 +38,7 @@ import scala.util.control.NonFatal
   *
   * @param delegate delegate filter
   */
-class CqlTransformFilter(delegate: DelegateFilter,sampling: SimpleFeature => Boolean) extends FilterBase {
+class CqlTransformFilter(delegate: DelegateFilter) extends FilterBase {
 
   /**
     * From the Filter javadocs:
@@ -56,7 +57,7 @@ class CqlTransformFilter(delegate: DelegateFilter,sampling: SimpleFeature => Boo
     * </ul>
     */
 
-  override def filterKeyValue(v: Cell): ReturnCode = delegate.filterKeyValue(v,sampling)
+  override def filterKeyValue(v: Cell): ReturnCode = delegate.filterKeyValue(v)
   override def transformCell(v: Cell): Cell = delegate.transformCell(v)
   override def toByteArray: Array[Byte] = CqlTransformFilter.serialize(delegate)
   override def toString: String = delegate.toString
@@ -75,7 +76,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     */
   @throws(classOf[DeserializationException])
   def parseFrom(pbBytes: Array[Byte]): org.apache.hadoop.hbase.filter.Filter =
-    new CqlTransformFilter(deserialize(pbBytes),_ => true)//TODO: check if is corrent to use a default: used in test only
+    new CqlTransformFilter(deserialize(pbBytes))
 
   /**
     * Create a new filter. Typically, filters created by this method will just be serialized to bytes and sent
@@ -104,18 +105,15 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     transform.foreach { case (tdefs, tsft) => feature.setTransforms(tdefs, tsft) }
 
     val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
-    val maybeSamplingFunction = samplingOptions
-      .flatMap(it => sample(SamplingIterator.configure(sft, it)))
-    val samplingFunction :SimpleFeature => Boolean = maybeSamplingFunction.getOrElse( _ => true)
 
     val delegate = filter match {
-      case None if maybeSamplingFunction.isDefined => new CqlTransformFilter(new FilterDelegate(sft, index, feature, Filter.INCLUDE),samplingFunction)
-      case None => new CqlTransformFilter(new TransformDelegate(sft, index, feature),samplingFunction)
-      case Some(f) if transform.isEmpty => new CqlTransformFilter(new FilterDelegate(sft, index, feature, f),samplingFunction)
-      case Some(f) => new CqlTransformFilter(new FilterTransformDelegate(sft, index, feature, f),samplingFunction)
+      case None if samplingOptions.isDefined => new FilterDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
+      case None => new TransformDelegate(sft, index, feature,samplingOptions)
+      case Some(f) if transform.isEmpty => new FilterDelegate(sft, index, feature, f,samplingOptions)
+      case Some(f) => new FilterTransformDelegate(sft, index, feature, f,samplingOptions)
     }
 
-    delegate
+    new CqlTransformFilter(delegate)
   }
 
   /**
@@ -131,6 +129,14 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     val indexSftBytes = if (delegate.index.sft == delegate.sft) { Array.empty[Byte] } else {
       SimpleFeatureTypes.encodeType(delegate.index.sft, includeUserData = true).getBytes(StandardCharsets.UTF_8)
     }
+
+
+    //TODO: add serialization of sampling options
+    val samplingFactor: Option[Float] = delegate.samplingOptions.map(s => s._1)
+    val samplingField: Option[String] = delegate.samplingOptions.flatMap(s => s._2)
+
+    val samplingFieldBytes = samplingField.map(field => field.getBytes(StandardCharsets.UTF_8)).getOrElse(Array.empty)
+
 
     delegate.transform match {
       case None =>
@@ -232,13 +238,16 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
       val tdefsLength = ByteArrays.readInt(bytes, offset)
 
+      //TODO:fill it
+      val samplingOptions:Option[(Float,Option[String])]=Option.empty
+
       if (tdefsLength == -1) {
         if (cql == null) {
           throw new DeserializationException("No filter or transform defined")
         } else {
           val index = deserializeIndex(sft, spec, bytes, offset + 4)
           feature.setIdParser(index.getIdFromRow(_, _, _, null))
-          new FilterDelegate(sft, index, feature, cql)
+          new FilterDelegate(sft, index, feature, cql,samplingOptions)
         }
       } else {
         offset += 4
@@ -255,9 +264,9 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
         feature.setIdParser(index.getIdFromRow(_, _, _, null))
 
         if (cql == null) {
-          new TransformDelegate(sft, index, feature)
+          new TransformDelegate(sft, index, feature,samplingOptions)
         } else {
-          new FilterTransformDelegate(sft, index, feature, cql)
+          new FilterTransformDelegate(sft, index, feature, cql,samplingOptions)
         }
       }
     } catch {
@@ -308,8 +317,9 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     def index: GeoMesaFeatureIndex[_, _]
     def filter: Option[Filter]
     def transform: Option[(String, SimpleFeatureType)]
-    def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode
+    def filterKeyValue(v: Cell): ReturnCode
     def transformCell(v: Cell): Cell
+    def samplingOptions:Option[(Float,Option[String])]
   }
 
   /**
@@ -323,13 +333,18 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
       val sft: SimpleFeatureType,
       val index: GeoMesaFeatureIndex[_, _],
       feature: KryoBufferSimpleFeature,
-      filt: Filter
+      filt: Filter,
+      samplingOpt:Option[(Float,Option[String])]
     ) extends DelegateFilter {
+
 
     override def filter: Option[Filter] = Some(filt)
     override def transform: Option[(String, SimpleFeatureType)] = None
 
-    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
+    override def samplingOptions: Option[(Float,Option[String])] = samplingOpt
+    val sampling = createSamplingFunction(sft,samplingOptions)
+
+    override def filterKeyValue(v: Cell): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
@@ -346,6 +361,11 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     override def toString: String = s"CqlFilter[${ECQL.toCQL(filt)}]"
   }
 
+  private def createSamplingFunction(sft: SimpleFeatureType,samplingOptions:Option[(Float,Option[String])]) = {
+    samplingOptions
+      .flatMap(it => sample(SamplingIterator.configure(sft, it))).getOrElse({_ :SimpleFeature => true})
+  }
+
   /**
     * Transforms without filtering
     *
@@ -355,13 +375,17 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
   private class TransformDelegate(
       val sft: SimpleFeatureType,
       val index: GeoMesaFeatureIndex[_, _],
-      feature: KryoBufferSimpleFeature
+      feature: KryoBufferSimpleFeature,
+      samplingOpt:Option[(Float,Option[String])]
     ) extends DelegateFilter {
 
     override def filter: Option[Filter] = None
     override def transform: Option[(String, SimpleFeatureType)] = feature.getTransform
 
-    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
+    override def samplingOptions: Option[(Float,Option[String])] = samplingOpt
+    val sampling = createSamplingFunction(sft,samplingOptions)
+
+    override def filterKeyValue(v: Cell): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
@@ -394,13 +418,17 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
       val sft: SimpleFeatureType,
       val index: GeoMesaFeatureIndex[_, _],
       feature: KryoBufferSimpleFeature,
-      filt: Filter
+      filt: Filter,
+      samplingOpt:Option[(Float,Option[String])]
     ) extends DelegateFilter {
+
+    override def samplingOptions: Option[(Float,Option[String])] = samplingOpt
+    val sampling = createSamplingFunction(sft,samplingOptions)
 
     override def filter: Option[Filter] = Some(filt)
     override def transform: Option[(String, SimpleFeatureType)] = feature.getTransform
 
-    override def filterKeyValue(v: Cell, sampling:SimpleFeature=>Boolean): ReturnCode = {
+    override def filterKeyValue(v: Cell): ReturnCode = {
       try {
         feature.setIdBuffer(v.getRowArray, v.getRowOffset, v.getRowLength)
         feature.setBuffer(v.getValueArray, v.getValueOffset, v.getValueLength)
