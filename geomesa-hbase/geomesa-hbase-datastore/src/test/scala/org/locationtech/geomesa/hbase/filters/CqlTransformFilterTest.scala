@@ -13,17 +13,14 @@ import org.apache.hadoop.hbase.filter.Filter.ReturnCode
 import org.apache.hadoop.hbase.{Cell, KeyValue}
 import org.geotools.data._
 import org.geotools.filter.text.ecql.ECQL
-import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.features.kryo.KryoFeatureSerializer
-import org.locationtech.geomesa.hbase.filters.CqlTransformFilter.NullFeatureIndex
 import org.locationtech.geomesa.index.api.{SingleRowKeyValue, WritableFeature}
 import org.locationtech.geomesa.index.conf.ColumnGroups
 import org.locationtech.geomesa.index.index.z2.Z2Index
 import org.locationtech.geomesa.utils.geotools.{FeatureUtils, SimpleFeatureTypes}
 import org.locationtech.geomesa.utils.index.IndexMode
-import org.locationtech.geomesa.utils.io.WithClose
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 

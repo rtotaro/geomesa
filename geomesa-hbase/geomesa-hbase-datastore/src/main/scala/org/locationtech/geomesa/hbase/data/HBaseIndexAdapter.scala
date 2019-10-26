@@ -235,7 +235,7 @@ class HBaseIndexAdapter(ds: HBaseDataStore) extends IndexAdapter[HBaseDataStore]
       val notSampling = hints.getSampling.isEmpty
 
       lazy val cqlFilter = if (ecql.isEmpty && transform.isEmpty && notSampling) { Seq.empty } else {
-        Seq((CqlTransformFilter.Priority, CqlTransformFilter(schema, strategy.index, ecql, transform,hints)))
+        Seq((CqlTransformFilter.Priority, CqlTransformFilter(schema, strategy.index, ecql, transform, hints)))
       }
 
       // TODO pull this out to be SPI loaded so that new indices can be added seamlessly

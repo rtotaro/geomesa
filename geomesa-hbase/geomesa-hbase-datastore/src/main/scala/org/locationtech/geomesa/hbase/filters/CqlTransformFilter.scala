@@ -94,6 +94,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     * @param sft simple feature type
     * @param filter cql filter, if any
     * @param transform transform, if any
+    * @param hints is used to get sampling options
     * @return
     */
   def apply(
@@ -111,9 +112,6 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     transform.foreach { case (tdefs, tsft) => feature.setTransforms(tdefs, tsft) }
 
     val samplingOptions: Option[(Float, Option[String])] = hints.getSampling
-
-
-
 
     val delegate = filter match {
       case None if samplingOptions.isDefined && transform.isEmpty => new FilterDelegate(sft, index, feature, Filter.INCLUDE,samplingOptions)
@@ -152,7 +150,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     delegate.transform match {
       case None =>
         val array = Array.ofDim[Byte](sftBytes.length + cqlBytes.length +
-            indexBytes.length + indexSftBytes.length + samplingFactorBytes.length + samplingFieldBytes.length + 4*7)
+            indexBytes.length + indexSftBytes.length + samplingFactorBytes.length + samplingFieldBytes.length + 4*7) //4 bytes (lenght info) per 7 fields
 
         var offset = 0
         ByteArrays.writeInt(sftBytes.length, array, offset)
@@ -211,7 +209,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
         val tsftBytes = SimpleFeatureTypes.encodeType(tsft).getBytes(StandardCharsets.UTF_8)
 
         val array = Array.ofDim[Byte](sftBytes.length + cqlBytes.length + tdefsBytes.length + tsftBytes.length +
-            indexBytes.length + indexSftBytes.length +samplingFactorBytes.length + samplingFieldBytes.length + 4*8)
+            indexBytes.length + indexSftBytes.length +samplingFactorBytes.length + samplingFieldBytes.length + 4*8) //4 bytes (lenght info) per 8 fields
 
         var offset = 0
         ByteArrays.writeInt(sftBytes.length, array, offset)
@@ -342,6 +340,13 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     }
   }
 
+  /**
+    * Deserialize the sampling options
+    *
+    * @param bytes raw byte array
+    * @param start offset into the byte array to start reading
+    * @return the sampling options
+    */
   private def deserializeSamplingOptions(
                                 bytes: Array[Byte],
                                 start: Int) : Option[(Float,Option[String])]={
@@ -427,6 +432,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     * @param sft simple feature type
     * @param feature reusable feature
     * @param filt filter
+    * @param samplingOpt sampling options
     */
   private class FilterDelegate(
       val sft: SimpleFeatureType,
@@ -460,6 +466,12 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     override def toString: String = s"CqlFilter[${ECQL.toCQL(filt)}]"
   }
 
+  /**
+    * Create the sampling function: return a tautology if sampling is disabled
+    *
+    * @param sft simple feature type
+    * @param samplingOptions
+    */
   private def createSamplingFunction(sft: SimpleFeatureType,samplingOptions:Option[(Float,Option[String])]) = {
     samplingOptions
       .flatMap(it => sample(SamplingIterator.configure(sft, it))).getOrElse({_ :SimpleFeature => true})
@@ -470,6 +482,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     *
     * @param sft simple feature type
     * @param feature reusable feature, with transforms set
+    * @param samplingOpt sampling options
     */
   private class TransformDelegate(
       val sft: SimpleFeatureType,
@@ -512,6 +525,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     * @param sft simple feature type
     * @param feature reusable feature, with transforms set
     * @param filt filter
+    * @param samplingOpt sampling options
     */
   private class FilterTransformDelegate(
       val sft: SimpleFeatureType,
