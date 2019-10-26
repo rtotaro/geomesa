@@ -235,9 +235,11 @@ class HBaseIndexAdapter(ds: HBaseDataStore) extends IndexAdapter[HBaseDataStore]
         }
 
         val filters = {
+          val notSampling = hints.getSampling.isEmpty
+
           // if there is a coprocessorConfig it handles filter/transform
-          val cqlFilter = if (coprocessorConfig.isDefined || (ecql.isEmpty && transform.isEmpty)) { Seq.empty } else {
-            Seq((CqlTransformFilter.Priority, CqlTransformFilter(schema, strategy.index, ecql, transform)))
+          val cqlFilter = if (coprocessorConfig.isDefined || (ecql.isEmpty && transform.isEmpty && notSampling)) { Seq.empty } else {
+            Seq((CqlTransformFilter.Priority, CqlTransformFilter(schema, strategy.index, ecql, transform, hints)))
           }
 
           // TODO pull this out to be SPI loaded so that new indices can be added seamlessly
