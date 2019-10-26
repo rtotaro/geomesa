@@ -129,9 +129,6 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     val indexSftBytes= if (delegate.index.sft == delegate.sft) { Array.empty[Byte] } else {
       SimpleFeatureTypes.encodeType(delegate.index.sft, includeUserData = true).getBytes(StandardCharsets.UTF_8)
     }
-
-
-    //TODO: add serialization of sampling options
     val samplingFactor: Option[Float] = delegate.samplingOptions.map(s => s._1)
     val samplingField: Option[String] = delegate.samplingOptions.flatMap(s => s._2)
 
@@ -142,7 +139,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     delegate.transform match {
       case None =>
         val array = Array.ofDim[Byte](sftBytes.length + cqlBytes.length +
-            indexBytes.length + indexSftBytes.length +samplingFactorBytes.length + samplingFieldBytes.length + 4*7)
+            indexBytes.length + indexSftBytes.length + samplingFactorBytes.length + samplingFieldBytes.length + 4*7)
 
         var offset = 0
         ByteArrays.writeInt(sftBytes.length, array, offset)
@@ -226,6 +223,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
           ByteArrays.writeInt(indexSftBytes.length, array, offset)
           offset += 4
           System.arraycopy(indexSftBytes, 0, array, offset, indexSftBytes.length)
+          offset += indexSftBytes.length
         }
 
         if (samplingFactorBytes.isEmpty) {

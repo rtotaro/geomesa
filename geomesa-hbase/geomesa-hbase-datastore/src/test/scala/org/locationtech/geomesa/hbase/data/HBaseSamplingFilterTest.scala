@@ -35,7 +35,7 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
   }
 
   "Hbase with sampling" should {
-    "return at least factor*datasize sample" in {
+    "return at least factor * datasize sample" in {
       val typeName = "testS2"
 
       val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
@@ -51,17 +51,10 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
         val features =
           (0 until 10).map { i =>
             ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track1", s"2010-05-07T0$i:00:00.000Z", s"POINT(40 6$i)")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track1", s"2010-05-07T0$i:00:00.000Z", s"POINT(41 6$i)")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track1", s"2010-05-07T0$i:00:00.000Z", s"POINT(42 6$i)")
           } ++ (10 until 20).map { i =>
             ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track2", s"2010-05-${i}T$i:00:00.000Z", s"POINT(40 6${i - 10})")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track2", s"2010-05-${i}$i:00:00.000Z", s"POINT(41 6${i - 10})")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track2", s"2010-05-${i}$i:00:00.000Z", s"POINT(42 6${i - 10})")
-
           } ++ (20 until 30).map { i =>
             ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track3", s"2010-05-${i}T${i-10}:00:00.000Z", s"POINT(40 8${i - 20})")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track3", s"2010-05-${i}$i:00:00.000Z", s"POINT(41 6${i - 20})")
-//            ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track3", s"2010-05-${i}$i:00:00.000Z", s"POINT(42 6${i - 20})")
           }
 
         WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
@@ -77,11 +70,53 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
 
           val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
           query.getHints.put(QueryHints.SAMPLING, 0.1f)
+//          query.getHints.put(QueryHints.SAMPLE_BY, "track1")
 
           val features = runQuery(query)
-          features must haveSize(10)
-          features.map(_.getID.toInt) must containTheSameElementsAs(0 to 9)
+          features must haveSize(4)
+
         }
+
+        "return at least factor * datasize sample using sampling field" in {
+          val typeName = "testS2"
+
+          val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
+          val ds = DataStoreFinder.getDataStore(params.asJava).asInstanceOf[HBaseDataStore]
+          ds must not(beNull)
+
+          try {
+            ds.getSchema(typeName) must beNull
+            ds.createSchema(SimpleFeatureTypes.createType(typeName,
+              "name:String,track:String,dtg:Date,*geom:Point:srid=4326;geomesa.indices.enabled=s2:geom"))
+            val sft = ds.getSchema(typeName)
+
+            val features =
+              (0 until 10).map { i =>
+                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track1", s"2010-05-07T0$i:00:00.000Z", s"POINT(40 6$i)")
+              } ++ (10 until 20).map { i =>
+                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track2", s"2010-05-${i}T$i:00:00.000Z", s"POINT(40 6${i - 10})")
+              } ++ (20 until 30).map { i =>
+                ScalaSimpleFeature.create(sft, s"$i", s"name$i", "track3", s"2010-05-${i}T${i-10}:00:00.000Z", s"POINT(40 8${i - 20})")
+              }
+
+            WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
+              features.foreach(f => FeatureUtils.write(writer, f, useProvidedFid = true))
+            }
+
+            def runQuery(query: Query): Seq[SimpleFeature] =
+              SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList
+
+            { // return all features for inclusive filter
+              val filter = "bbox(geom, -180, -90, 180, 90)" +
+                " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
+
+              val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
+              query.getHints.put(QueryHints.SAMPLING, 0.1f)
+
+              val features = runQuery(query)
+              features must haveSize(4)
+
+            }
 
 //        { // return some features for exclusive geom filter
 //          val filter = "bbox(geom, 35, 55, 45, 65.001)" +
