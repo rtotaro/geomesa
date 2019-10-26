@@ -76,7 +76,7 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
                         " AND dtg between '2009-05-07T00:00:00.000Z' and '2011-05-08T00:00:00.000Z'"
 
           val query = new Query(sft.getTypeName, ECQL.toFilter(filter))
-          query.getHints.put(QueryHints.SAMPLING, 0.3f)
+          query.getHints.put(QueryHints.SAMPLING, 0.1f)
 
           val features = runQuery(query)
           features must haveSize(10)

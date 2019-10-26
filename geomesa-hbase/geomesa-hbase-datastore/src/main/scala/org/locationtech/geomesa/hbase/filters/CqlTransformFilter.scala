@@ -126,7 +126,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     val sftBytes = SimpleFeatureTypes.encodeType(delegate.sft, includeUserData = true).getBytes(StandardCharsets.UTF_8)
     val cqlBytes = delegate.filter.map(ECQL.toCQL(_).getBytes(StandardCharsets.UTF_8)).getOrElse(Array.empty)
     val indexBytes = delegate.index.identifier.getBytes(StandardCharsets.UTF_8)
-    val indexSftBytes = if (delegate.index.sft == delegate.sft) { Array.empty[Byte] } else {
+    val indexSftBytes= if (delegate.index.sft == delegate.sft) { Array.empty[Byte] } else {
       SimpleFeatureTypes.encodeType(delegate.index.sft, includeUserData = true).getBytes(StandardCharsets.UTF_8)
     }
 
@@ -135,13 +135,14 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     val samplingFactor: Option[Float] = delegate.samplingOptions.map(s => s._1)
     val samplingField: Option[String] = delegate.samplingOptions.flatMap(s => s._2)
 
+    val samplingFactorBytes = samplingFactor.map(f => ByteBuffer.allocate(4).putFloat(f).array()).getOrElse(Array.empty)
     val samplingFieldBytes = samplingField.map(field => field.getBytes(StandardCharsets.UTF_8)).getOrElse(Array.empty)
 
 
     delegate.transform match {
       case None =>
         val array = Array.ofDim[Byte](sftBytes.length + cqlBytes.length +
-            indexBytes.length + indexSftBytes.length + 20)
+            indexBytes.length + indexSftBytes.length +samplingFactorBytes.length + samplingFieldBytes.length + 4*7)
 
         var offset = 0
         ByteArrays.writeInt(sftBytes.length, array, offset)
@@ -161,10 +162,30 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
         offset += indexBytes.length
         if (indexSftBytes.isEmpty) {
           ByteArrays.writeInt(0, array, offset)
+          offset += 4
         } else {
           ByteArrays.writeInt(indexSftBytes.length, array, offset)
           offset += 4
           System.arraycopy(indexSftBytes, 0, array, offset, indexSftBytes.length)
+          offset += indexSftBytes.length
+        }
+
+        if (samplingFactorBytes.isEmpty) {
+          ByteArrays.writeInt(0, array, offset)
+          offset += 4
+        } else {
+          ByteArrays.writeInt(samplingFactorBytes.length, array, offset)
+          offset += 4
+          System.arraycopy(samplingFactorBytes, 0, array, offset, samplingFactorBytes.length)
+          offset += samplingFactorBytes.length
+        }
+
+        if (samplingFieldBytes.isEmpty) {
+          ByteArrays.writeInt(0, array, offset)
+        } else {
+          ByteArrays.writeInt(samplingFieldBytes.length, array, offset)
+          offset += 4
+          System.arraycopy(samplingFieldBytes, 0, array, offset, samplingFieldBytes.length)
         }
 
 
@@ -175,7 +196,7 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
         val tsftBytes = SimpleFeatureTypes.encodeType(tsft).getBytes(StandardCharsets.UTF_8)
 
         val array = Array.ofDim[Byte](sftBytes.length + cqlBytes.length + tdefsBytes.length + tsftBytes.length +
-            indexBytes.length + indexSftBytes.length + 24)
+            indexBytes.length + indexSftBytes.length +samplingFactorBytes.length + samplingFieldBytes.length + 4*8)
 
         var offset = 0
         ByteArrays.writeInt(sftBytes.length, array, offset)
@@ -200,11 +221,31 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
         offset += indexBytes.length
         if (indexSftBytes.isEmpty) {
           ByteArrays.writeInt(0, array, offset)
+          offset += 4
         } else {
           ByteArrays.writeInt(indexSftBytes.length, array, offset)
           offset += 4
           System.arraycopy(indexSftBytes, 0, array, offset, indexSftBytes.length)
         }
+
+        if (samplingFactorBytes.isEmpty) {
+          ByteArrays.writeInt(0, array, offset)
+          offset += 4
+        } else {
+          ByteArrays.writeInt(samplingFactorBytes.length, array, offset)
+          offset += 4
+          System.arraycopy(samplingFactorBytes, 0, array, offset, samplingFactorBytes.length)
+          offset += samplingFactorBytes.length
+        }
+
+        if (samplingFieldBytes.isEmpty) {
+          ByteArrays.writeInt(0, array, offset)
+        } else {
+          ByteArrays.writeInt(samplingFieldBytes.length, array, offset)
+          offset += 4
+          System.arraycopy(samplingFieldBytes, 0, array, offset, samplingFieldBytes.length)
+        }
+
 
         array
     }
@@ -238,15 +279,17 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
       val tdefsLength = ByteArrays.readInt(bytes, offset)
 
-      //TODO:fill it
-      val samplingOptions:Option[(Float,Option[String])]=Option.empty
 
       if (tdefsLength == -1) {
         if (cql == null) {
           throw new DeserializationException("No filter or transform defined")
         } else {
-          val index = deserializeIndex(sft, spec, bytes, offset + 4)
+          val (index,newOffset) = deserializeIndex(sft, spec, bytes, offset + 4)
+          offset = newOffset
           feature.setIdParser(index.getIdFromRow(_, _, _, null))
+
+          val samplingOptions = deserializeSamplingOptions(bytes,offset)
+
           new FilterDelegate(sft, index, feature, cql,samplingOptions)
         }
       } else {
@@ -260,8 +303,11 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
 
         feature.setTransforms(tdefs, tsft)
 
-        val index = deserializeIndex(sft, spec, bytes, offset + tsftLength)
+        val (index,newOffset) = deserializeIndex(sft, spec, bytes, offset + tsftLength)
+        offset = newOffset
         feature.setIdParser(index.getIdFromRow(_, _, _, null))
+
+        val samplingOptions = deserializeSamplingOptions(bytes,offset)
 
         if (cql == null) {
           new TransformDelegate(sft, index, feature,samplingOptions)
@@ -275,6 +321,32 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     }
   }
 
+  private def deserializeSamplingOptions(
+                                bytes: Array[Byte],
+                                start: Int) : Option[(Float,Option[String])]={
+
+    var samplingOption: Option[(Float,Option[String])]= Option.empty
+
+    var offset = start
+    val factorLenght = ByteArrays.readInt(bytes, offset)
+    offset += 4
+    if(factorLenght != 0) {
+      val samplingFactor = ByteBuffer.wrap(bytes,offset,factorLenght).getFloat
+      offset+=factorLenght
+      val fieldNameLenght = ByteArrays.readInt(bytes, offset)
+      offset+=4
+      if (fieldNameLenght!=0){
+        val fieldName = new String(bytes, offset, fieldNameLenght,StandardCharsets.UTF_8)
+        samplingOption = Option.apply((samplingFactor,Option.apply(fieldName)))
+      }
+      else {
+        samplingOption = Option.apply((samplingFactor,Option.empty))
+      }
+    }
+    samplingOption
+
+  }
+
   /**
     * Deserialize the feature index
     *
@@ -282,17 +354,17 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
     * @param spec simple feature type spec string
     * @param bytes raw byte array
     * @param start offset into the byte array to start reading
-    * @return
+    * @return index and the new offset
     */
   private def deserializeIndex(
       sft: SimpleFeatureType,
       spec: String,
       bytes: Array[Byte],
-      start: Int): GeoMesaFeatureIndex[_, _] = {
+      start: Int): (GeoMesaFeatureIndex[_, _],Int) = {
     if (bytes.length <= start) {
       // we're reading a filter serialized without the index - just use a placeholder instead
       // note: serializing this filter will fail, but it shouldn't ever be serialized
-      NullFeatureIndex
+      (NullFeatureIndex,start)
     } else {
       var offset = start
       val identifierLength = ByteArrays.readInt(bytes, offset)
@@ -300,11 +372,13 @@ object CqlTransformFilter extends StrictLogging with SamplingIterator {
       val identifier = new String(bytes, offset, identifierLength, StandardCharsets.UTF_8)
       offset += identifierLength
       val indexSftLength = ByteArrays.readInt(bytes, offset)
+      offset+=4
       if (indexSftLength == 0) {
-        IteratorCache.index(sft, spec, identifier)
+        (IteratorCache.index(sft, spec, identifier),offset)
       } else {
-        val indexSpec = new String(bytes, offset + 4, indexSftLength, StandardCharsets.UTF_8)
-        IteratorCache.index(IteratorCache.sft(indexSpec), indexSpec, identifier)
+        val indexSpec = new String(bytes, offset, indexSftLength, StandardCharsets.UTF_8)
+        offset+=indexSftLength
+        (IteratorCache.index(IteratorCache.sft(indexSpec), indexSpec, identifier),offset)
       }
     }
   }
