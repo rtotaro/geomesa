@@ -40,7 +40,7 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
       try {
         ds.getSchema(typeName) must beNull
         ds.createSchema(SimpleFeatureTypes.createType(typeName,
-          "name:String,track:String,dtg:Date,*geom:Point:srid=4326;geomesa.indices.enabled=s2:geom"))
+          "name:String,track:String,dtg:Date,*geom:Point:srid=4326"))
         val sft = ds.getSchema(typeName)
 
         val features =
@@ -53,8 +53,12 @@ class HBaseSamplingFilterTest extends HBaseTest with LazyLogging {
           }
 
         WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
-          features.foreach(f => FeatureUtils.copyToWriter(writer, f, useProvidedFid = true))
+          features.foreach { f =>
+            FeatureUtils.copyToWriter(writer, f, useProvidedFid = true)
+            writer.write()
+          }
         }
+
 
         def runQuery(query: Query): Seq[SimpleFeature] =
           SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList
