@@ -539,7 +539,6 @@ object RelationUtils extends LazyLogging {
         partitionEnvelopes += new Envelope(minX, maxX, minY, maxY)
       }
     }
-
     partitionEnvelopes.toList
   }
 
