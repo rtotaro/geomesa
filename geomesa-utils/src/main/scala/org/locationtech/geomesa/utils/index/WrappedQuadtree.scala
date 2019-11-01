@@ -8,8 +8,6 @@
 
 package org.locationtech.geomesa.utils.index
 
-import org.geotools.data.shapefile.index.quadtree.QuadTree
-import org.locationtech.jts.geom.{Envelope, Geometry}
 import org.locationtech.jts.index.quadtree.Quadtree
 
 import scala.collection.JavaConverters._
@@ -18,7 +16,7 @@ import scala.collection.JavaConverters._
  * Spatial index wrapper for un-synchronized quad tree
  */
 class WrappedQuadtree[T] extends WrapperIndex[T,Quadtree](
-  indexBuider = Function {() => new QuadTree()}
+  indexBuider = () => new Quadtree()
 
 ) with Serializable {
 

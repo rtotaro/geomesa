@@ -34,6 +34,10 @@ class GeoCQEngineTest extends Specification with LazyLogging {
   val cqWithIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes) , enableFidIndex = true)
   cqWithIndexes.insert(feats)
 
+  // Set up CQEngine with rtree indexes
+  val cqWithRtreeIndexes = new GeoCQEngine(sftWithRtreeIndexes, CQIndexType.getDefinedAttributes(sftWithRtreeIndexes) , enableFidIndex = true)
+  cqWithRtreeIndexes.insert(feats)
+
   def getGeoToolsCount(filter: Filter) = feats.count(filter.evaluate)
 
   def getCQEngineCount(filter: Filter, cq: GeoCQEngine) = {
@@ -62,6 +66,9 @@ class GeoCQEngineTest extends Specification with LazyLogging {
       }
       s"return correct number of results for $name filter $f (various indices)" >> {
         checkFilter(f, cqWithIndexes)
+      }
+      s"return correct number of results for $name filter $f (various with geo-rtree)" >> {
+        checkFilter(f, cqWithRtreeIndexes)
       }
     }
   }
