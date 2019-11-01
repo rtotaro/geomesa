@@ -18,13 +18,15 @@
 package org.locationtech.geomesa.spark.geospark.serde;
 
 import com.esotericsoftware.kryo.Kryo;
+import org.locationtech.geomesa.spark.geospark.geometryObjects.JavaSpatialIndexSerde;
 import org.locationtech.jts.geom.*;
+import org.locationtech.jts.index.quadtree.Node;
 import org.locationtech.jts.index.quadtree.Quadtree;
 import org.locationtech.jts.index.strtree.STRtree;
 import org.apache.spark.serializer.KryoRegistrator;
 import org.locationtech.geomesa.spark.geospark.geometryObjects.Circle;
 import org.locationtech.geomesa.spark.geospark.geometryObjects.GeometrySerde;
-import org.locationtech.geomesa.spark.geospark.geometryObjects.SpatialIndexSerde;
+//import org.locationtech.geomesa.spark.geospark.geometryObjects.SpatialIndexSerde;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +40,7 @@ public class GeoSparkKryoRegistrator
     public void registerClasses(Kryo kryo)
     {
         GeometrySerde serializer = new GeometrySerde();
-        SpatialIndexSerde indexSerializer = new SpatialIndexSerde(serializer);
+//        SpatialIndexSerde indexSerializer = new SpatialIndexSerde(serializer);
 
         log.info("Registering custom serializers for geometry types");
 
@@ -52,7 +54,8 @@ public class GeoSparkKryoRegistrator
         kryo.register(Circle.class, serializer);
         kryo.register(Envelope.class, serializer);
         // TODO: Replace the default serializer with default spatial index serializer
-        kryo.register(Quadtree.class, indexSerializer);
-        kryo.register(STRtree.class, indexSerializer);
+        kryo.register(Quadtree.class, new JavaSpatialIndexSerde());
+        kryo.register(STRtree.class, new JavaSpatialIndexSerde());
+
     }
 }
