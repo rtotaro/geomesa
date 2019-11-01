@@ -17,16 +17,14 @@ import com.googlecode.cqengine.persistence.support.ObjectStore;
 import com.googlecode.cqengine.query.Query;
 import com.googlecode.cqengine.query.option.QueryOptions;
 import com.googlecode.cqengine.resultset.ResultSet;
+import org.locationtech.geomesa.utils.index.*;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.geomesa.memory.cqengine.query.Intersects;
-import org.locationtech.geomesa.utils.index.BucketIndex;
-import org.locationtech.geomesa.utils.index.SizeSeparatedBucketIndex;
-import org.locationtech.geomesa.utils.index.SizeSeparatedBucketIndex$;
-import org.locationtech.geomesa.utils.index.SpatialIndex;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.type.AttributeDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.collection.JavaConversions;
@@ -51,7 +49,10 @@ public class GeoIndex<A extends Geometry, O extends SimpleFeature> extends Abstr
     public GeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute, int xBuckets, int yBuckets) {
         super(attribute, supportedQueries);
         geomAttributeIndex = sft.indexOf(attribute.getAttributeName());
-        if (sft.getDescriptor(geomAttributeIndex).getType().getBinding() == Point.class) {
+        AttributeDescriptor attributeDescriptor = sft.getDescriptor(geomAttributeIndex);
+        if(attributeDescriptor.getUserData().containsKey("geo-index-type") && attributeDescriptor.getUserData().get("geo-index-type").equals("rtree")) {
+            index = new WrappedSTRtree<>();
+        } else if (attributeDescriptor.getType().getBinding() == Point.class) {
             index = new BucketIndex<>(xBuckets, yBuckets, new Envelope(-180.0, 180.0, -90.0, 90.0));
         } else {
             index = new SizeSeparatedBucketIndex<>(SizeSeparatedBucketIndex$.MODULE$.DefaultTiers(),

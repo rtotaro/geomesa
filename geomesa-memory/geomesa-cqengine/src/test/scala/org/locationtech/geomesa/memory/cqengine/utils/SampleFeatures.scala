@@ -49,6 +49,18 @@ object SampleFeatures {
     "Why:String" // Why can have nulls
   ).mkString(",")
   val sftWithIndexes = SimpleFeatureTypes.createType("test2", specIndexes)
+  val specRtreeIndexes = List(
+    "Who:String:cq-index=default",
+    "What:Integer:cq-index=navigable",
+    "WhatLong:Long:cq-index=navigable",
+    "WhatFloat:Float:cq-index=navigable",
+    "WhatDouble:Double:cq-index=navigable",
+    "WhatBool:Boolean",
+    "When:Date:cq-index=navigable",
+    "*Where:Point:srid=4326:cq-index=geometry:geo-index-type=rtree",
+    "Why:String" // Why can have nulls
+  ).mkString(",")
+  val sftWithRtreeIndexes = SimpleFeatureTypes.createType("test3", specRtreeIndexes)
 
   val cq = SFTAttributes(sft)
   val ff = CommonFactoryFinder.getFilterFactory2
