@@ -10,18 +10,28 @@ import org.locationtech.jts.geom.Point;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Deprecated
-public class GeoIndex<A extends Geometry, O extends SimpleFeature>  extends AbstractGeoIndex<A,O> {
-    public GeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute) {
+import java.text.MessageFormat;
+
+public class BucketGeoIndex<A extends Geometry, O extends SimpleFeature> extends AbstractGeoIndex<A, O> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BucketGeoIndex.class);
+
+    public static String X_BUCKET = "xBucket";
+    public static String Y_BUCKET = "yBucket";
+
+    public BucketGeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute) {
         super(sft, attribute);
-    }
-
-    @Deprecated
-    public GeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute, int xBuckets, int yBuckets) {
-        super(sft,attribute);
         geomAttributeIndex = sft.indexOf(attribute.getAttributeName());
         AttributeDescriptor attributeDescriptor = sft.getDescriptor(geomAttributeIndex);
+
+        int xBuckets = (int) attributeDescriptor.getUserData().getOrDefault(X_BUCKET, 360);
+        int yBuckets = (int) attributeDescriptor.getUserData().getOrDefault(Y_BUCKET, 180);
+
+        LOGGER.debug(MessageFormat.format("Bucket Index in use :xBucket = {0}, yBucket={1}", xBuckets, yBuckets));
+
         if (attributeDescriptor.getType().getBinding() == Point.class) {
             index = new BucketIndex<>(xBuckets, yBuckets, new Envelope(-180.0, 180.0, -90.0, 90.0));
         } else {
@@ -30,16 +40,6 @@ public class GeoIndex<A extends Geometry, O extends SimpleFeature>  extends Abst
                     yBuckets / 180d,
                     new Envelope(-180.0, 180.0, -90.0, 90.0));
         }
-    }
-
-    @Deprecated
-    public static <A extends Geometry, O extends SimpleFeature> GeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute) {
-        return (GeoIndex<A, O>) GeoIndexFactory.onAttribute(sft,attribute);
-    }
-
-    @Deprecated
-    public static <A extends Geometry, O extends SimpleFeature> GeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute, int xBuckets, int yBuckets) {
-        return new GeoIndex<A, O>(sft, attribute, xBuckets, yBuckets);
     }
 
 

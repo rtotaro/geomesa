@@ -57,7 +57,7 @@ object SampleFeatures {
     "WhatDouble:Double:cq-index=navigable",
     "WhatBool:Boolean",
     "When:Date:cq-index=navigable",
-    "*Where:Point:srid=4326:cq-index=geometry:geo-index-type=rtree",
+    "*Where:Point:srid=4326:cq-index=geometry:geo-index-type=STRtree",
     "Why:String" // Why can have nulls
   ).mkString(",")
   val sftWithRtreeIndexes = SimpleFeatureTypes.createType("test3", specRtreeIndexes)

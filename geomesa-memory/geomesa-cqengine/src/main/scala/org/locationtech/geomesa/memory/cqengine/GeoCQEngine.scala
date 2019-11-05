@@ -23,7 +23,7 @@ import com.googlecode.cqengine.{ConcurrentIndexedCollection, IndexedCollection}
 import com.typesafe.scalalogging.LazyLogging
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.geomesa.memory.cqengine.attribute.SimpleFeatureAttribute
-import org.locationtech.geomesa.memory.cqengine.index.GeoIndex
+import org.locationtech.geomesa.memory.cqengine.index.{GeoIndex, GeoIndexFactory}
 import org.locationtech.geomesa.memory.cqengine.utils.CQIndexType.CQIndexType
 import org.locationtech.geomesa.memory.cqengine.utils._
 import org.locationtech.geomesa.utils.index.SimpleFeatureIndex
@@ -116,7 +116,7 @@ class GeoCQEngine(val sft: SimpleFeatureType,
 
           case GEOMETRY | DEFAULT if classOf[Geometry].isAssignableFrom(binding) =>
               val attribute = new SimpleFeatureAttribute(binding.asInstanceOf[Class[Geometry]], sft, name)
-              GeoIndex.onAttribute(sft, attribute, geomResolution._1, geomResolution._2)
+              GeoIndexFactory.onAttribute(sft, attribute)
 
           case DEFAULT if classOf[UUID].isAssignableFrom(binding) =>
               UniqueIndex.onAttribute(new SimpleFeatureAttribute(classOf[UUID], sft, name))
