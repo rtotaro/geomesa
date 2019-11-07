@@ -4,15 +4,8 @@ import org.locationtech.geomesa.memory.cqengine.index.BucketGeoIndex;
 
 public enum GeoIndexType {
 
-    STRtree(new String[]{"nodeCapacity"}),QuadTree(new String[]{}),Bucket(new String[]{BucketGeoIndex.X_BUCKET,BucketGeoIndex.X_BUCKET});
+    Bucket,STRtree,QuadTree;
 
-    private String[] allowedParameters;
 
-    GeoIndexType(String[] allowedParameters) {
-        this.allowedParameters = allowedParameters;
-    }
 
-    public String[] getAllowedParameters() {
-        return allowedParameters;
-    }
 }

@@ -34,7 +34,7 @@ public class GeoIndex<A extends Geometry, O extends SimpleFeature>  extends Abst
 
     @Deprecated
     public static <A extends Geometry, O extends SimpleFeature> GeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute) {
-        return (GeoIndex<A, O>) GeoIndexFactory.onAttribute(sft,attribute);
+        return (GeoIndex<A, O>)onAttribute(sft, attribute, 360, 180);
     }
 
     @Deprecated

@@ -2,6 +2,7 @@ package org.locationtech.geomesa.memory.cqengine.index;
 
 import com.googlecode.cqengine.attribute.Attribute;
 import org.apache.commons.lang3.ArrayUtils;
+import org.locationtech.geomesa.memory.cqengine.attribute.GeoIndexParams;
 import org.locationtech.geomesa.memory.cqengine.attribute.GeoIndexType;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
@@ -9,22 +10,21 @@ import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.Option;
 
 public class GeoIndexFactory {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GeoIndexFactory.class);
 
 
-    public static <A extends Geometry, O extends SimpleFeature> AbstractGeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute) {
+    public static <A extends Geometry, O extends SimpleFeature> AbstractGeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute, GeoIndexType geoIndexType, Option<GeoIndexParams> geoIndexParams) {
         int geomAttributeIndex = sft.indexOf(attribute.getAttributeName());
         AttributeDescriptor attributeDescriptor = sft.getDescriptor(geomAttributeIndex);
-        GeoIndexType geoIndexType = getGeoIndexType(attributeDescriptor);
-
         switch (geoIndexType){
             case Bucket:
-                return new BucketGeoIndex<A,O>(sft,attribute);
+                return new BucketGeoIndex<A,O>(sft,attribute,geoIndexParams);
             case STRtree:
-                return new STRtreeGeoIndex<A,O>(sft,attribute);
+                return new STRtreeGeoIndex<A,O>(sft,attribute,geoIndexParams);
             case QuadTree:
                 return new QuadTreeGeoIndex<A,O>(sft,attribute);
         }

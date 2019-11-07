@@ -22,7 +22,7 @@ import com.googlecode.cqengine.query.{Query, QueryFactory}
 import com.googlecode.cqengine.{ConcurrentIndexedCollection, IndexedCollection}
 import com.typesafe.scalalogging.LazyLogging
 import org.locationtech.jts.geom.Geometry
-import org.locationtech.geomesa.memory.cqengine.attribute.SimpleFeatureAttribute
+import org.locationtech.geomesa.memory.cqengine.attribute.{BucketIndexParam, GeoIndexParams, GeoIndexType, SimpleFeatureAttribute}
 import org.locationtech.geomesa.memory.cqengine.index.{GeoIndex, GeoIndexFactory}
 import org.locationtech.geomesa.memory.cqengine.utils.CQIndexType.CQIndexType
 import org.locationtech.geomesa.memory.cqengine.utils._
@@ -35,10 +35,20 @@ import scala.collection.JavaConversions._
 class GeoCQEngine(val sft: SimpleFeatureType,
                   attributes: Seq[(String, CQIndexType)],
                   enableFidIndex: Boolean = false,
-                  geomResolution: (Int, Int) = (360, 180),
+                  geoIndexType: GeoIndexType = GeoIndexType.Bucket,
+                  geoIndexParam : Option[GeoIndexParams] = Option.empty,
                   dedupe: Boolean = true) extends SimpleFeatureIndex with LazyLogging {
 
   protected val cqcache: IndexedCollection[SimpleFeature] = new ConcurrentIndexedCollection[SimpleFeature]()
+
+
+  def this(sft: SimpleFeatureType,
+           attributes: Seq[(String, CQIndexType)],
+           enableFidIndex: Boolean,
+           geomResolution: (Int, Int) = (360, 180),
+           dedupe: Boolean) = {
+    this(sft,attributes,enableFidIndex,GeoIndexType.Bucket,Option.apply(new BucketIndexParam(geomResolution._1,geomResolution._2).asInstanceOf[GeoIndexParams]) ,dedupe)
+  }
 
   addIndices()
 
@@ -116,7 +126,7 @@ class GeoCQEngine(val sft: SimpleFeatureType,
 
           case GEOMETRY | DEFAULT if classOf[Geometry].isAssignableFrom(binding) =>
               val attribute = new SimpleFeatureAttribute(binding.asInstanceOf[Class[Geometry]], sft, name)
-              GeoIndexFactory.onAttribute(sft, attribute)
+            GeoIndexFactory.onAttribute(sft, attribute, geoIndexType, geoIndexParam);
 
           case DEFAULT if classOf[UUID].isAssignableFrom(binding) =>
               UniqueIndex.onAttribute(new SimpleFeatureAttribute(classOf[UUID], sft, name))
