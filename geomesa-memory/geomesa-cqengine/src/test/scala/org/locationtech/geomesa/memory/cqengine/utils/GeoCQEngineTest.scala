@@ -1,19 +1,35 @@
-/***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Apache License, Version 2.0
- * which accompanies this distribution and is available at
- * http://www.opensource.org/licenses/apache2.0.php.
- ***********************************************************************/
+/** *********************************************************************
+  * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+  * All rights reserved. This program and the accompanying materials
+  * are made available under the terms of the Apache License, Version 2.0
+  * which accompanies this distribution and is available at
+  * http://www.opensource.org/licenses/apache2.0.php.
+  * **********************************************************************/
+
+/** *********************************************************************
+  * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+  * All rights reserved. This program and the accompanying materials
+  * are made available under the terms of the Apache License, Version 2.0
+  * which accompanies this distribution and is available at
+  * http://www.opensource.org/licenses/apache2.0.php.
+  * **********************************************************************/
 
 package org.locationtech.geomesa.memory.cqengine.utils
 
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.log4j
+import org.apache.log4j.spi.LoggingEvent
+import org.apache.log4j.{AppenderSkeleton, Category, Level, LogManager, Logger}
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.memory.cqengine.GeoCQEngine
+import org.locationtech.geomesa.memory.cqengine.attribute.{GeoIndexType, STRtreeIndexParam}
+import org.locationtech.geomesa.memory.cqengine.index.{AbstractGeoIndex, BucketGeoIndex}
 import org.locationtech.geomesa.memory.cqengine.utils.SampleFeatures._
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
+import org.locationtech.geomesa.utils.index.SpatialIndex
+import org.opengis.feature.simple.SimpleFeature
 import org.opengis.filter.Filter
+import org.opengis.geometry.Geometry
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
@@ -24,6 +40,8 @@ class GeoCQEngineTest extends Specification with LazyLogging {
 
   import SampleFilters._
 
+  System.setProperty("GeoCQEngineDebugEnabled","true")
+
   val feats = (0 until 1000).map(SampleFeatures.buildFeature)
 
   // Set up CQEngine with no indexes
@@ -31,12 +49,21 @@ class GeoCQEngineTest extends Specification with LazyLogging {
   cqNoIndexes.insert(feats)
 
   // Set up CQEngine with all indexes
-  val cqWithIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes) , enableFidIndex = true)
+  val cqWithIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes), enableFidIndex = true)
   cqWithIndexes.insert(feats)
 
   // Set up CQEngine with rtree indexes
-  val cqWithRtreeIndexes = new GeoCQEngine(sftWithRtreeIndexes, CQIndexType.getDefinedAttributes(sftWithRtreeIndexes) , enableFidIndex = true)
-  cqWithRtreeIndexes.insert(feats)
+  val cqWithSTRtreeIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes), enableFidIndex = true, GeoIndexType.STRtree)
+  cqWithSTRtreeIndexes.insert(feats)
+
+  // Set up CQEngine with STRtree indexes and node capacity
+  val cqWithSTRtreeNodeCapacityIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes), enableFidIndex = true, GeoIndexType.STRtree, Option.apply(new STRtreeIndexParam(20)))
+  cqWithSTRtreeNodeCapacityIndexes.insert(feats)
+
+  // Set up CQEngine with Quadtree indexes
+  val cqWithQuadtreeIndexes = new GeoCQEngine(sftWithIndexes, CQIndexType.getDefinedAttributes(sftWithIndexes), enableFidIndex = true, GeoIndexType.QuadTree)
+  cqWithQuadtreeIndexes.insert(feats)
+
 
   def getGeoToolsCount(filter: Filter) = feats.count(filter.evaluate)
 
@@ -44,16 +71,18 @@ class GeoCQEngineTest extends Specification with LazyLogging {
     SelfClosingIterator(cq.query(filter)).size
   }
 
-  def checkFilter(filter: Filter, cq: GeoCQEngine): MatchResult[Int] = {
+  def checkFilter(filter: Filter, cq: GeoCQEngine, geoIndexClass: Class[_ <: SpatialIndex[SimpleFeature]]): MatchResult[Int] = {
     val gtCount = getGeoToolsCount(filter)
 
     val cqCount = getCQEngineCount(filter, cq)
+
+    val lastIndexUsed = GeoCQEngine.getLastIndexUsed()
 
     val msg = s"GT: $gtCount CQ: $cqCount Filter: $filter"
     if (gtCount == cqCount)
       logger.debug(msg)
     else
-      logger.error("MISMATCH: "+msg)
+      logger.error("MISMATCH: " + msg)
 
     // since GT count is (presumably) correct
     cqCount must equalTo(gtCount)
@@ -62,13 +91,19 @@ class GeoCQEngineTest extends Specification with LazyLogging {
   def buildFilterTests(name: String, filters: Seq[Filter]): Seq[Fragment] = {
     for (f <- filters) yield {
       s"return correct number of results for $name filter $f (geo-only index)" >> {
-        checkFilter(f, cqNoIndexes)
+        checkFilter(f, cqNoIndexes, null)
       }
       s"return correct number of results for $name filter $f (various indices)" >> {
-        checkFilter(f, cqWithIndexes)
+        checkFilter(f, cqWithIndexes, null)
       }
-      s"return correct number of results for $name filter $f (various with geo-rtree)" >> {
-        checkFilter(f, cqWithRtreeIndexes)
+      s"return correct number of results for $name filter $f (various with geo-SRTree with default config)" >> {
+        checkFilter(f, cqWithSTRtreeIndexes, null)
+      }
+      s"return correct number of results for $name filter $f (various with geo-SRTree with nodecapacity=20)" >> {
+        checkFilter(f, cqWithSTRtreeNodeCapacityIndexes, null)
+      }
+      s"return correct number of results for $name filter $f (various with QuadTree)" >> {
+        checkFilter(f, cqWithQuadtreeIndexes, null)
       }
     }
   }
