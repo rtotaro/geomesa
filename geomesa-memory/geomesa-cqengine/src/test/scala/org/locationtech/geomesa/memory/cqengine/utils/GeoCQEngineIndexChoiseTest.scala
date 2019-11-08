@@ -13,9 +13,9 @@ import org.junit.runner.RunWith
 import org.locationtech.geomesa.memory.cqengine.GeoCQEngine
 import org.locationtech.geomesa.memory.cqengine.index.GeoIndexType
 import org.locationtech.geomesa.memory.cqengine.index.param.STRtreeIndexParam
-import org.locationtech.geomesa.utils.index.{BucketIndex, SpatialIndex, WrappedQuadtree, WrappedSTRtree}
 import org.locationtech.geomesa.memory.cqengine.utils.SampleFeatures._
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
+import org.locationtech.geomesa.utils.index.{BucketIndex, SpatialIndex, WrappedQuadtree, WrappedSTRtree}
 import org.opengis.filter.Filter
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
@@ -27,7 +27,7 @@ class GeoCQEngineIndexChoiseTest extends Specification with LazyLogging {
 
   import SampleFilters._
 
-  System.setProperty("GeoCQEngineDebugEnabled","true")
+  System.setProperty("GeoCQEngineDebugEnabled", "true")
 
   val feats = (0 until 1000).map(SampleFeatures.buildFeature)
 
@@ -58,7 +58,7 @@ class GeoCQEngineIndexChoiseTest extends Specification with LazyLogging {
     SelfClosingIterator(cq.query(filter)).size
   }
 
-  def checkFilter(filter: Filter, cq: GeoCQEngine, spatialIndex: Option[Class[_<:SpatialIndex[_]]]): MatchResult[Int] = {
+  def checkFilter(filter: Filter, cq: GeoCQEngine, spatialIndex: Option[Class[_ <: SpatialIndex[_]]]): MatchResult[Int] = {
     val gtCount = getGeoToolsCount(filter)
 
     val cqCount = getCQEngineCount(filter, cq)
@@ -82,22 +82,22 @@ class GeoCQEngineIndexChoiseTest extends Specification with LazyLogging {
 
   def buildFilterTests(name: String, filters: Seq[Filter]): Seq[Fragment] = {
 
-    var spatialIndex: Option[Class[_<:SpatialIndex[_]] ]= Option.empty
+    var spatialIndex: Option[Class[_ <: SpatialIndex[_]]] = Option.empty
     for (f <- filters) yield {
       s"return correct number of results for $name filter $f (geo-only index)" >> {
-        checkFilter(f, cqNoIndexes,spatialIndex)
+        checkFilter(f, cqNoIndexes, spatialIndex)
       }
       s"return correct number of results for $name filter $f (various indices)" >> {
-        checkFilter(f, cqWithIndexes,Option.apply(classOf[BucketIndex[_]]))
+        checkFilter(f, cqWithIndexes, Option.apply(classOf[BucketIndex[_]]))
       }
       s"return correct number of results for $name filter $f (various with geo-SRTree with default config)" >> {
-        checkFilter(f, cqWithSTRtreeIndexes,Option.apply(classOf[WrappedSTRtree[_]]))
+        checkFilter(f, cqWithSTRtreeIndexes, Option.apply(classOf[WrappedSTRtree[_]]))
       }
       s"return correct number of results for $name filter $f (various with geo-SRTree with nodecapacity=20)" >> {
-        checkFilter(f, cqWithSTRtreeNodeCapacityIndexes,Option.apply(classOf[WrappedSTRtree[_]]))
+        checkFilter(f, cqWithSTRtreeNodeCapacityIndexes, Option.apply(classOf[WrappedSTRtree[_]]))
       }
       s"return correct number of results for $name filter $f (various with QuadTree)" >> {
-        checkFilter(f, cqWithQuadtreeIndexes,Option.apply(classOf[WrappedQuadtree[_]]))
+        checkFilter(f, cqWithQuadtreeIndexes, Option.apply(classOf[WrappedQuadtree[_]]))
       }
     }
   }

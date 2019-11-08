@@ -8,12 +8,6 @@
 
 package org.locationtech.geomesa.memory.cqengine.index;
 
-import org.locationtech.geomesa.memory.cqengine.index.BucketGeoIndex;
-
 public enum GeoIndexType {
-
-    Bucket,STRtree,QuadTree;
-
-
-
+    Bucket, STRtree, QuadTree;
 }

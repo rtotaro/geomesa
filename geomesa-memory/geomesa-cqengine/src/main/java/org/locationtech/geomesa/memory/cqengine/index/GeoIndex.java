@@ -20,14 +20,14 @@ import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 
 @Deprecated
-public class GeoIndex<A extends Geometry, O extends SimpleFeature>  extends AbstractGeoIndex<A,O> {
+public class GeoIndex<A extends Geometry, O extends SimpleFeature> extends AbstractGeoIndex<A, O> {
     public GeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute) {
         super(sft, attribute);
     }
 
     @Deprecated
     public GeoIndex(SimpleFeatureType sft, Attribute<O, A> attribute, int xBuckets, int yBuckets) {
-        super(sft,attribute);
+        super(sft, attribute);
         geomAttributeIndex = sft.indexOf(attribute.getAttributeName());
         AttributeDescriptor attributeDescriptor = sft.getDescriptor(geomAttributeIndex);
         if (attributeDescriptor.getType().getBinding() == Point.class) {
@@ -42,7 +42,7 @@ public class GeoIndex<A extends Geometry, O extends SimpleFeature>  extends Abst
 
     @Deprecated
     public static <A extends Geometry, O extends SimpleFeature> GeoIndex<A, O> onAttribute(SimpleFeatureType sft, Attribute<O, A> attribute) {
-        return (GeoIndex<A, O>)onAttribute(sft, attribute, 360, 180);
+        return (GeoIndex<A, O>) onAttribute(sft, attribute, 360, 180);
     }
 
     @Deprecated

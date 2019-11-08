@@ -1,22 +1,22 @@
-/***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Apache License, Version 2.0
- * which accompanies this distribution and is available at
- * http://www.opensource.org/licenses/apache2.0.php.
- ***********************************************************************/
+/** *********************************************************************
+  * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+  * All rights reserved. This program and the accompanying materials
+  * are made available under the terms of the Apache License, Version 2.0
+  * which accompanies this distribution and is available at
+  * http://www.opensource.org/licenses/apache2.0.php.
+  * **********************************************************************/
 
 package org.locationtech.geomesa.memory.cqengine.utils
 
 import java.time.{ZoneOffset, ZonedDateTime}
 import java.util.Date
 
-import org.locationtech.jts.geom.Point
 import org.geotools.factory.CommonFactoryFinder
 import org.geotools.feature.simple.SimpleFeatureBuilder
 import org.geotools.filter.text.ecql.ECQL
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.text.WKTUtils
+import org.locationtech.jts.geom.Point
 import org.opengis.feature.simple.SimpleFeature
 import org.opengis.filter.Filter
 
@@ -105,6 +105,7 @@ object SampleFeatures {
   */
 object SampleFilters {
   implicit def stringToFilter(s: String): Filter = ECQL.toFilter(s)
+
   val ff = CommonFactoryFinder.getFilterFactory2
 
   // big enough so there are likely to be points in them
@@ -129,7 +130,7 @@ object SampleFilters {
     "WhatBool = true",
     "WhatBool = false",
 
-    ff.notEqual(ff.property("What"), ff.literal(5))  // CQL parser doesn't like "What != 5"
+    ff.notEqual(ff.property("What"), ff.literal(5)) // CQL parser doesn't like "What != 5"
   )
 
   val specialFilters: Seq[Filter] = Seq(
@@ -143,7 +144,7 @@ object SampleFilters {
   val nullFilters: Seq[Filter] = Seq(
     "Why IS NULL",
     "Why IS NOT NULL",
-    ff.isNil(ff.property("Why"), null)  // Not sure how to put in (E)CQL
+    ff.isNil(ff.property("Why"), null) // Not sure how to put in (E)CQL
   )
 
   val comparableFilters = Seq[Filter](

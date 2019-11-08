@@ -18,7 +18,6 @@ import com.googlecode.cqengine.query.Query;
 import com.googlecode.cqengine.query.option.QueryOptions;
 import com.googlecode.cqengine.resultset.ResultSet;
 import org.locationtech.geomesa.memory.cqengine.GeoCQEngine;
-import org.locationtech.geomesa.memory.cqengine.GeoCQEngine$;
 import org.locationtech.geomesa.memory.cqengine.query.Intersects;
 import org.locationtech.geomesa.utils.index.SpatialIndex;
 import org.locationtech.jts.geom.Envelope;
@@ -98,7 +97,7 @@ public abstract class AbstractGeoIndex<A extends Geometry, O extends SimpleFeatu
 
 
     private void traceIndexForDebug() {
-        if(GeoCQEngine.isDebugEnabled()){
+        if (GeoCQEngine.isDebugEnabled()) {
             GeoCQEngine.setLastIndexUsed(index);
         }
     }
