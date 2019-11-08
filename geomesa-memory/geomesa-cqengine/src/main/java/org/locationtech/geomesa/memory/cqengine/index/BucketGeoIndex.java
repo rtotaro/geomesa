@@ -9,7 +9,7 @@
 package org.locationtech.geomesa.memory.cqengine.index;
 
 import com.googlecode.cqengine.attribute.Attribute;
-import org.locationtech.geomesa.memory.cqengine.attribute.BucketIndexParam;
+import org.locationtech.geomesa.memory.cqengine.index.param.BucketIndexParam;
 import org.locationtech.geomesa.utils.index.BucketIndex;
 import org.locationtech.geomesa.utils.index.SizeSeparatedBucketIndex;
 import org.locationtech.geomesa.utils.index.SizeSeparatedBucketIndex$;

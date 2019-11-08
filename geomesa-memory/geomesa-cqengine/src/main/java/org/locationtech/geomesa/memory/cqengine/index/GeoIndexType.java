@@ -6,7 +6,7 @@
  * http://www.opensource.org/licenses/apache2.0.php.
  ***********************************************************************/
 
-package org.locationtech.geomesa.memory.cqengine.attribute;
+package org.locationtech.geomesa.memory.cqengine.index;
 
 import org.locationtech.geomesa.memory.cqengine.index.BucketGeoIndex;
 

@@ -9,8 +9,8 @@
 package org.locationtech.geomesa.memory.cqengine
 
 import com.googlecode.cqengine.attribute.Attribute
-import org.locationtech.geomesa.memory.cqengine.attribute.{BucketIndexParam, GeoIndexParams, GeoIndexType, STRtreeIndexParam}
-import org.locationtech.geomesa.memory.cqengine.index.{AbstractGeoIndex, BucketGeoIndex, QuadTreeGeoIndex, STRtreeGeoIndex}
+import org.locationtech.geomesa.memory.cqengine.index.param.{BucketIndexParam, GeoIndexParams, STRtreeIndexParam}
+import org.locationtech.geomesa.memory.cqengine.index.{AbstractGeoIndex, BucketGeoIndex, GeoIndexType, QuadTreeGeoIndex, STRtreeGeoIndex}
 import org.opengis.feature.simple.SimpleFeatureType
 import org.locationtech.jts.geom.Geometry
 import org.opengis.feature.simple.SimpleFeature

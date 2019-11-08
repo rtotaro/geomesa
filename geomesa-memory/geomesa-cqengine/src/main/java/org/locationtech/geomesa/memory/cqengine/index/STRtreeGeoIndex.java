@@ -9,9 +9,7 @@
 package org.locationtech.geomesa.memory.cqengine.index;
 
 import com.googlecode.cqengine.attribute.Attribute;
-import org.locationtech.geomesa.memory.cqengine.attribute.BucketIndexParam;
-import org.locationtech.geomesa.memory.cqengine.attribute.GeoIndexParams;
-import org.locationtech.geomesa.memory.cqengine.attribute.STRtreeIndexParam;
+import org.locationtech.geomesa.memory.cqengine.index.param.STRtreeIndexParam;
 import org.locationtech.geomesa.utils.index.WrappedSTRtree;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
@@ -19,9 +17,6 @@ import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.Function;
-import scala.Function0;
-import scala.Option;
 
 import java.text.MessageFormat;
 import java.util.Optional;
