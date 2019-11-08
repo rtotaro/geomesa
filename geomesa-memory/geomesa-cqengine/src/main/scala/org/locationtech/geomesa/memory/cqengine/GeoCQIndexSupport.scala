@@ -33,7 +33,7 @@ object GeoCQIndexSupport {
             attributes: Seq[(String, CQIndexType)],
             xResolution: Int,
             yResolution: Int): GeoCQIndexSupport = {
-    val index = new GeoCQIndex(new GeoCQEngine(sft,attributes,true, (xResolution, yResolution)))
+    val index = new GeoCQIndex(new GeoCQEngine(sft, attributes, enableFidIndex = true, (xResolution, yResolution)))
     new GeoCQIndexSupport(sft, index)
   }
 
