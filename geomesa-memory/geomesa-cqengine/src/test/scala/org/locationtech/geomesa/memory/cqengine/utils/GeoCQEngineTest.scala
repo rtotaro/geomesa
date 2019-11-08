@@ -16,17 +16,19 @@
 
 package org.locationtech.geomesa.memory.cqengine.utils
 
+import java.lang
+
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.log4j
 import org.apache.log4j.spi.LoggingEvent
 import org.apache.log4j.{AppenderSkeleton, Category, Level, LogManager, Logger}
 import org.junit.runner.RunWith
-import org.locationtech.geomesa.memory.cqengine.GeoCQEngine
+import org.locationtech.geomesa.memory.cqengine.{GeoCQEngine, index}
 import org.locationtech.geomesa.memory.cqengine.attribute.{GeoIndexType, STRtreeIndexParam}
-import org.locationtech.geomesa.memory.cqengine.index.{AbstractGeoIndex, BucketGeoIndex}
+import org.locationtech.geomesa.memory.cqengine.index.{AbstractGeoIndex, BucketGeoIndex, QuadTreeGeoIndex, STRtreeGeoIndex}
 import org.locationtech.geomesa.memory.cqengine.utils.SampleFeatures._
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
-import org.locationtech.geomesa.utils.index.SpatialIndex
+import org.locationtech.geomesa.utils.index.{SpatialIndex, WrappedQuadtree, WrappedSTRtree}
 import org.opengis.feature.simple.SimpleFeature
 import org.opengis.filter.Filter
 import org.opengis.geometry.Geometry
@@ -35,12 +37,14 @@ import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 import org.specs2.specification.core.{Fragment, Fragments}
 
+import scala.reflect.ClassTag
+
 @RunWith(classOf[JUnitRunner])
 class GeoCQEngineTest extends Specification with LazyLogging {
 
   import SampleFilters._
 
-  System.setProperty("GeoCQEngineDebugEnabled","true")
+  System.setProperty("GeoCQEngineDebugEnabled", "true")
 
   val feats = (0 until 1000).map(SampleFeatures.buildFeature)
 
@@ -71,12 +75,17 @@ class GeoCQEngineTest extends Specification with LazyLogging {
     SelfClosingIterator(cq.query(filter)).size
   }
 
-  def checkFilter(filter: Filter, cq: GeoCQEngine, geoIndexClass: Class[_ <: SpatialIndex[SimpleFeature]]): MatchResult[Int] = {
+  def checkFilter(filter: Filter, cq: GeoCQEngine, spatialIndex: Option[Class[_]]): MatchResult[Int] = {
     val gtCount = getGeoToolsCount(filter)
 
     val cqCount = getCQEngineCount(filter, cq)
 
+
     val lastIndexUsed = GeoCQEngine.getLastIndexUsed()
+    if (spatialIndex.isDefined) {
+      val expected = spatialIndex.get
+      lastIndexUsed must beAnInstanceOf expected
+    }
 
     val msg = s"GT: $gtCount CQ: $cqCount Filter: $filter"
     if (gtCount == cqCount)
@@ -88,41 +97,56 @@ class GeoCQEngineTest extends Specification with LazyLogging {
     cqCount must equalTo(gtCount)
   }
 
-  def buildFilterTests(name: String, filters: Seq[Filter]): Seq[Fragment] = {
+  def buildFilterTests(name: String, filters: Seq[Filter], checkFilterType: Boolean): Seq[Fragment] = {
+
+    var spatialIndex: Option[Class[_] ]= Option.empty
     for (f <- filters) yield {
+
       s"return correct number of results for $name filter $f (geo-only index)" >> {
-        checkFilter(f, cqNoIndexes, null)
+        checkFilter(f, cqNoIndexes, spatialIndex)
       }
       s"return correct number of results for $name filter $f (various indices)" >> {
-        checkFilter(f, cqWithIndexes, null)
+        if (checkFilterType) {
+          spatialIndex = Option.apply(classOf[BucketGeoIndex[_, _]])
+        }
+        checkFilter(f, cqWithIndexes, spatialIndex)
       }
       s"return correct number of results for $name filter $f (various with geo-SRTree with default config)" >> {
-        checkFilter(f, cqWithSTRtreeIndexes, null)
+        if (checkFilterType) {
+          spatialIndex = Option.apply(classOf[WrappedSTRtree[_]])
+        }
+        checkFilter(f, cqWithSTRtreeIndexes, spatialIndex)
       }
       s"return correct number of results for $name filter $f (various with geo-SRTree with nodecapacity=20)" >> {
-        checkFilter(f, cqWithSTRtreeNodeCapacityIndexes, null)
+        if (checkFilterType) {
+          spatialIndex = Option.apply(classOf[WrappedSTRtree[_]])
+        }
+        checkFilter(f, cqWithSTRtreeNodeCapacityIndexes, spatialIndex)
       }
       s"return correct number of results for $name filter $f (various with QuadTree)" >> {
-        checkFilter(f, cqWithQuadtreeIndexes, null)
+        if (checkFilterType) {
+          spatialIndex = Option.apply(classOf[WrappedQuadtree[_]])
+        }
+        checkFilter(f, cqWithQuadtreeIndexes, spatialIndex)
       }
     }
   }
 
-  def runFilterTests(name: String, filters: Seq[Filter]): Fragments = Fragments(buildFilterTests(name, filters): _*)
+  def runFilterTests(name: String, filters: Seq[Filter], checkFilter: Boolean): Fragments = Fragments(buildFilterTests(name, filters, checkFilter): _*)
 
   "GeoCQEngine" should {
-    runFilterTests("equality", equalityFilters)
-    runFilterTests("special", specialFilters)
-    runFilterTests("null", nullFilters)
-    runFilterTests("comparable", comparableFilters)
-    runFilterTests("temporal", temporalFilters)
-    runFilterTests("one level AND", oneLevelAndFilters)
-    runFilterTests("one level multiple AND", oneLevelMultipleAndsFilters)
-    runFilterTests("one level OR", oneLevelOrFilters)
-    runFilterTests("one level multiple OR", oneLevelMultipleOrsFilters)
-    runFilterTests("one level NOT", simpleNotFilters)
-    runFilterTests("basic spatial predicates", spatialPredicates)
-    runFilterTests("attribute predicates", attributePredicates)
-    runFilterTests("function predicates", functionPredicates)
+    runFilterTests("equality", equalityFilters, false)
+    runFilterTests("special", specialFilters, false)
+    runFilterTests("null", nullFilters, false)
+    runFilterTests("comparable", comparableFilters, false)
+    runFilterTests("temporal", temporalFilters, false)
+    runFilterTests("one level AND", oneLevelAndFilters, false)
+    runFilterTests("one level multiple AND", oneLevelMultipleAndsFilters, false)
+    runFilterTests("one level OR", oneLevelOrFilters, false)
+    runFilterTests("one level multiple OR", oneLevelMultipleOrsFilters, false)
+    runFilterTests("one level NOT", simpleNotFilters, false)
+    runFilterTests("basic spatial predicates", spatialPredicates, true)
+    runFilterTests("attribute predicates", attributePredicates, false)
+    runFilterTests("function predicates", functionPredicates, false)
   }
 }
