@@ -48,8 +48,8 @@
             <artifactId>geomesa-filter_${scala.binary.version}</artifactId>
         </dependency>
         <!--<dependency>-->
-        <!--<groupId>org.locationtech.geomesa</groupId>-->
-        <!--<artifactId>geomesa-feature-common_2.11</artifactId>-->
+            <!--<groupId>org.locationtech.geomesa</groupId>-->
+            <!--<artifactId>geomesa-feature-common_2.11</artifactId>-->
         <!--</dependency>-->
         <dependency>
             <groupId>org.locationtech.jts</groupId>
@@ -71,18 +71,6 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <version>1.2.17</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-log4j12</artifactId>
-            <version>1.7.25</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.specs2</groupId>
